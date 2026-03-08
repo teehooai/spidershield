@@ -70,9 +70,35 @@ def run_scan_report(target: str) -> ScanReport:
 
     recommendations = []
     if desc_score < 6.0:
-        recommendations.append("Run `teeshield rewrite` to optimize tool descriptions for LLMs")
+        worst = sorted(tool_scores, key=lambda s: s.overall_score)[:3]
+        worst_names = ", ".join(f"`{s.tool_name}` ({s.overall_score}/10)" for s in worst)
+        recommendations.append(f"Run `teeshield rewrite` -- worst tools: {worst_names}")
+        # Actionable hints based on what's missing across tools
+        missing = {"verb": 0, "scenario": 0, "params": 0, "examples": 0}
+        for s in tool_scores:
+            if not s.has_action_verb:
+                missing["verb"] += 1
+            if not s.has_scenario_trigger:
+                missing["scenario"] += 1
+            if not s.has_param_docs:
+                missing["params"] += 1
+            if not s.has_param_examples:
+                missing["examples"] += 1
+        top_missing = sorted(missing.items(), key=lambda x: -x[1])[:2]
+        hints = {"verb": "start with an action verb", "scenario": "add 'Use when...' guidance",
+                 "params": "document parameters", "examples": "add concrete examples"}
+        for key, count in top_missing:
+            if count > 0:
+                recommendations.append(f"  {count}/{len(tool_scores)} tools: {hints[key]}")
     if security_score < 6.0:
-        recommendations.append("Run `teeshield harden` to fix security issues")
+        crit = [i for i in security_issues if i.severity == "critical"]
+        if crit:
+            categories = set(i.category for i in crit)
+            recommendations.append(
+                f"Run `teeshield harden` -- {len(crit)} critical: {', '.join(categories)}"
+            )
+        else:
+            recommendations.append("Run `teeshield harden` to fix security issues")
     if len(tool_names) > 40:
         recommendations.append(
             f"Too many tools ({len(tool_names)}). Consider splitting into multiple servers"
@@ -124,8 +150,23 @@ def run_scan(target: str, output_path: str | None = None, output_format: str = "
         _print_table(report)
 
 
+def _score_color(score: float) -> str:
+    """Return a Rich color tag for a numeric score."""
+    if score >= 8.0:
+        return "green"
+    if score >= 5.0:
+        return "yellow"
+    return "red"
+
+
+def _severity_color(severity: str) -> str:
+    """Return a Rich color tag for a severity level."""
+    return {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}.get(severity, "dim")
+
+
 def _print_table(report: ScanReport):
     """Print a rich table summary."""
+    # --- Summary table ---
     table = Table(title=f"TeeShield Scan Report - {report.target}")
     table.add_column("Metric", style="bold")
     table.add_column("Value")
@@ -136,21 +177,64 @@ def _print_table(report: ScanReport):
     warn = "[yellow]WARN[/yellow]"
     table.add_row("License", report.license or "Unknown", ok if report.license_ok else fail)
     table.add_row("Tools", str(report.tool_count), warn if report.tool_count > 40 else ok)
-    table.add_row("Security", f"{len(report.security_issues)} issues", f"{report.security_score}/10")
-    table.add_row("Descriptions", "", f"{report.description_score}/10")
-    table.add_row("Architecture", "", f"{report.architecture_score}/10")
+
+    sc = _score_color(report.security_score)
+    table.add_row("Security", f"{len(report.security_issues)} issues", f"[{sc}]{report.security_score}/10[/{sc}]")
+    dc = _score_color(report.description_score)
+    table.add_row("Descriptions", "", f"[{dc}]{report.description_score}/10[/{dc}]")
+    ac = _score_color(report.architecture_score)
+    table.add_row("Architecture", "", f"[{ac}]{report.architecture_score}/10[/{ac}]")
     table.add_row("Tests", "Yes" if report.has_tests else "No", ok if report.has_tests else fail)
     table.add_row("", "", "")
-    table.add_row("[bold]Overall[/bold]", f"Rating: {report.rating.value}", f"[bold]{report.overall_score}/10[/bold]")
-    table.add_row("Improvement Potential", "", f"{report.improvement_potential}/10")
+
+    oc = _score_color(report.overall_score)
+    table.add_row(
+        "[bold]Overall[/bold]",
+        f"Rating: [{oc}]{report.rating.value}[/{oc}]",
+        f"[bold {oc}]{report.overall_score}/10[/bold {oc}]",
+    )
 
     console.print(table)
 
+    # --- Per-tool description scores ---
+    if report.tool_scores:
+        tool_table = Table(title="Tool Description Quality")
+        tool_table.add_column("Tool", style="bold")
+        tool_table.add_column("Score", justify="right")
+        tool_table.add_column("Verb")
+        tool_table.add_column("Scenario")
+        tool_table.add_column("Params")
+        tool_table.add_column("Examples")
+        tool_table.add_column("Errors")
+
+        check = "[green]Y[/green]"
+        cross = "[red]N[/red]"
+        for ts in sorted(report.tool_scores, key=lambda s: s.overall_score):
+            c = _score_color(ts.overall_score)
+            tool_table.add_row(
+                ts.tool_name,
+                f"[{c}]{ts.overall_score}[/{c}]",
+                check if ts.has_action_verb else cross,
+                check if ts.has_scenario_trigger else cross,
+                check if ts.has_param_docs else cross,
+                check if ts.has_param_examples else cross,
+                check if ts.has_error_guidance else cross,
+            )
+        console.print(tool_table)
+
+    # --- Security issues ---
     if report.security_issues:
         console.print(f"\n[yellow]Security Issues ({len(report.security_issues)}):[/yellow]")
-        for issue in report.security_issues[:10]:
-            console.print(f"  [{issue.severity}] {issue.category}: {issue.description} ({issue.file}:{issue.line})")
+        for issue in report.security_issues[:15]:
+            sc = _severity_color(issue.severity)
+            console.print(
+                f"  [{sc}]{issue.severity.upper():8s}[/{sc}] "
+                f"{issue.category} -- {issue.file}:{issue.line}"
+            )
+            if issue.fix_suggestion:
+                console.print(f"           [dim]Fix: {issue.fix_suggestion}[/dim]")
 
+    # --- Recommendations ---
     if report.recommendations:
         console.print("\n[bold]Recommendations:[/bold]")
         for rec in report.recommendations:

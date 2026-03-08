@@ -32,9 +32,11 @@ class ToolDescriptionScore(BaseModel):
     """Quality score for a single tool's description."""
 
     tool_name: str
+    has_action_verb: bool = Field(default=False, description="Starts with an action verb")
     has_scenario_trigger: bool = Field(description="Contains 'Use when...' guidance")
     has_param_examples: bool
     has_error_guidance: bool
+    has_param_docs: bool = Field(default=False, description="Documents parameters/inputs")
     disambiguation_score: float = Field(ge=0, le=1, description="How distinct from other tools")
     overall_score: float = Field(ge=0, le=10)
     suggested_rewrite: str | None = None

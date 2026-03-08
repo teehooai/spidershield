@@ -60,6 +60,38 @@ def test_security_scan_command_injection(tmp_path: Path):
     assert any(i.severity == "critical" for i in issues)
 
 
+def test_security_scan_no_false_positive_environ(tmp_path: Path):
+    """os.environ.get for secrets should NOT be flagged (it's the standard pattern)."""
+    py_file = tmp_path / "server.py"
+    py_file.write_text('import os\napi_key = os.environ.get("API_KEY", "")\n')
+    score, issues = scan_security(tmp_path)
+    assert not any(i.category == "hardcoded_credential" for i in issues)
+
+
+def test_security_scan_hardcoded_secret(tmp_path: Path):
+    """Hardcoded secret string SHOULD be flagged."""
+    py_file = tmp_path / "server.py"
+    py_file.write_text('api_key = "sk-1234567890abcdef"\n')
+    score, issues = scan_security(tmp_path)
+    assert any(i.category == "hardcoded_credential" for i in issues)
+
+
+def test_security_scan_unsafe_deserialization(tmp_path: Path):
+    """pickle.load and yaml.load without SafeLoader should be flagged."""
+    py_file = tmp_path / "server.py"
+    py_file.write_text('import pickle\ndata = pickle.load(f)\n')
+    score, issues = scan_security(tmp_path)
+    assert any(i.category == "unsafe_deserialization" for i in issues)
+
+
+def test_security_scan_no_false_positive_str_param(tmp_path: Path):
+    """Regular function with str param should NOT be flagged (only MCP tools)."""
+    py_file = tmp_path / "server.py"
+    py_file.write_text('def helper(name: str):\n    return name.upper()\n')
+    score, issues = scan_security(tmp_path)
+    assert not any(i.category == "no_input_validation" for i in issues)
+
+
 def test_description_quality_good(tmp_path: Path):
     """Test scoring of a well-described tool."""
     py_file = tmp_path / "server.py"
@@ -69,6 +101,7 @@ def list_tables():
     """List all tables in the database.
 
     Use when the user wants to see available tables.
+    Accepts `schema` parameter to filter by schema name.
     Example: Returns ['users', 'orders', 'products'].
     If the connection fails, check your database URL.
     """
@@ -77,9 +110,12 @@ def list_tables():
     score, tool_scores, names = score_descriptions(tmp_path)
     assert len(names) == 1
     assert names[0] == "list_tables"
+    assert tool_scores[0].has_action_verb is True
     assert tool_scores[0].has_scenario_trigger is True
     assert tool_scores[0].has_param_examples is True
     assert tool_scores[0].has_error_guidance is True
+    assert tool_scores[0].has_param_docs is True
+    assert tool_scores[0].overall_score >= 8.0
 
 
 def test_description_quality_poor(tmp_path: Path):
@@ -94,7 +130,22 @@ def query(sql):
     score, tool_scores, names = score_descriptions(tmp_path)
     assert tool_scores[0].has_scenario_trigger is False
     assert tool_scores[0].has_param_examples is False
-    assert tool_scores[0].overall_score < 5.0
+    assert tool_scores[0].overall_score < 4.0
+
+
+def test_description_quality_minimal(tmp_path: Path):
+    """Test that a bare-minimum description scores very low."""
+    py_file = tmp_path / "server.py"
+    py_file.write_text('''
+@server.tool()
+def do_thing():
+    """Does a thing."""
+    pass
+''')
+    score, tool_scores, names = score_descriptions(tmp_path)
+    # No verb start, no scenario, no examples, no error guidance, no param docs
+    # Should score near 1.0-2.0, NOT 3.5
+    assert tool_scores[0].overall_score < 2.5
 
 
 def test_architecture_check(tmp_path: Path):

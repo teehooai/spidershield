@@ -312,25 +312,46 @@ def _print_comparison(results: list[dict]):
 
 def _quick_score(desc: str) -> float:
     """Quick-score a description using the same criteria as the scanner."""
+    _ACTION_VERBS = (
+        "read", "write", "create", "delete", "remove", "list", "get", "set",
+        "update", "search", "find", "query", "fetch", "send", "run", "execute",
+        "check", "validate", "show", "display", "add", "edit", "move", "copy",
+        "rename", "monitor", "scan", "analyze", "parse", "convert", "generate",
+        "deploy", "install", "configure", "connect", "disconnect", "start", "stop",
+        "reset", "restore", "backup", "export", "import", "subscribe", "publish",
+        "retrieve", "return", "compute", "calculate", "open", "close", "log",
+        "commit", "push", "pull", "merge", "checkout", "diff", "apply", "revert",
+    )
+    first_word = desc.split()[0].lower().rstrip("s") if desc.strip() else ""
+    has_verb = first_word in _ACTION_VERBS or first_word.rstrip("e") in _ACTION_VERBS
     has_scenario = bool(re.search(r"(?:use (?:this )?when|use for|call this)", desc, re.I))
     has_examples = bool(re.search(r"(?:e\.g\.|example|for instance|such as|like )", desc, re.I))
-    has_error = bool(re.search(r"(?:error|fail|common issue|if .* fails|troubleshoot)", desc, re.I))
+    has_error = bool(
+        re.search(r"(?:error|fail|common issue|if .* fails|troubleshoot|raise|exception|invalid)", desc, re.I)
+    )
+    has_param_docs = bool(re.search(
+        r"(?:param(?:eter)?s?|input|argument|accepts?|takes?|requires?|expects?)\s*[:.)]", desc, re.I,
+    )) or bool(re.search(r"`\w+`", desc))
 
     length_score = 1.0
     if len(desc) < 20:
-        length_score = 0.3
+        length_score = 0.2
     elif len(desc) < 50:
-        length_score = 0.6
+        length_score = 0.5
+    elif len(desc) < 80:
+        length_score = 0.7
     elif len(desc) > 500:
         length_score = 0.7
 
     score = (
-        (1.0 if has_scenario else 0.0) * 3.0
-        + (1.0 if has_examples else 0.0) * 2.0
-        + (1.0 if has_error else 0.0) * 1.5
-        + 1.0 * 2.0  # assume decent disambiguation
-        + length_score * 1.5
-    ) / 10.0 * 10.0
+        (1.0 if has_verb else 0.0) * 1.5
+        + (1.0 if has_scenario else 0.0) * 3.0
+        + (1.0 if has_param_docs else 0.0) * 1.5
+        + (1.0 if has_examples else 0.0) * 1.5
+        + (1.0 if has_error else 0.0) * 1.0
+        + 1.0 * 1.0  # assume decent disambiguation for rewrites
+        + length_score * 0.5
+    )
 
     return round(min(10.0, score), 1)
 

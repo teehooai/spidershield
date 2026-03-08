@@ -24,48 +24,98 @@ def score_descriptions(
     tool_names = [t["name"] for t in tools]
     scores: list[ToolDescriptionScore] = []
 
+    # Build stop-word set for disambiguation (words appearing in >50% of tools)
+    all_words: dict[str, int] = {}
+    for t in tools:
+        for w in set(t.get("description", "").lower().split()):
+            all_words[w] = all_words.get(w, 0) + 1
+    half = max(1, len(tools) // 2)
+    stop_words = {w for w, c in all_words.items() if c > half or len(w) <= 2}
+
     for tool in tools:
         name = tool["name"]
         desc = tool.get("description", "")
 
+        # 1. Action verb: description starts with a verb (imperative mood)
+        _ACTION_VERBS = (
+            "read", "write", "create", "delete", "remove", "list", "get", "set",
+            "update", "search", "find", "query", "fetch", "send", "run", "execute",
+            "check", "validate", "show", "display", "add", "edit", "move", "copy",
+            "rename", "monitor", "scan", "analyze", "parse", "convert", "generate",
+            "deploy", "install", "configure", "connect", "disconnect", "start", "stop",
+            "reset", "restore", "backup", "export", "import", "subscribe", "publish",
+            "retrieve", "return", "compute", "calculate", "open", "close", "log",
+            "commit", "push", "pull", "merge", "checkout", "diff", "apply", "revert",
+        )
+        first_word = desc.split()[0].lower().rstrip("s") if desc.strip() else ""
+        has_action_verb = first_word in _ACTION_VERBS or first_word.rstrip("e") in _ACTION_VERBS
+
+        # 2. Scenario trigger: "Use when..." / "Use for..." / "Call this..."
         has_scenario = bool(re.search(r"(?:use (?:this )?when|use for|call this)", desc, re.I))
+
+        # 3. Parameter examples: concrete examples of inputs
         has_examples = bool(re.search(r"(?:e\.g\.|example|for instance|such as|like )", desc, re.I))
+
+        # 4. Error guidance: failure modes and troubleshooting
         has_error_guidance = bool(
-            re.search(r"(?:error|fail|common issue|if .* fails|troubleshoot)", desc, re.I)
+            re.search(r"(?:error|fail|common issue|if .* fails|troubleshoot|raise|exception|invalid)", desc, re.I)
         )
 
-        # Disambiguation: check if description is specific enough
+        # 5. Parameter documentation: mentions input parameters or accepted values
+        has_param_docs = bool(re.search(
+            r"(?:param(?:eter)?s?|input|argument|accepts?|takes?|requires?|expects?)\s*[:.]",
+            desc, re.I,
+        )) or bool(re.search(r"`\w+`", desc))  # backtick-quoted param names
+
+        # 6. Disambiguation: specificity vs other tools (using content words only)
         disambiguation = 1.0
         for other in tools:
             if other["name"] != name:
                 other_desc = other.get("description", "")
-                overlap = _word_overlap(desc, other_desc)
-                if overlap > 0.6:
-                    disambiguation = min(disambiguation, 1.0 - overlap)
+                overlap = _word_overlap(desc, other_desc, stop_words)
+                if overlap > 0.5:
+                    disambiguation = min(disambiguation, max(0.0, 1.0 - overlap))
 
-        # Length penalty: too short or too long
+        # 7. Length score: penalize very short or excessively long
         length_score = 1.0
         if len(desc) < 20:
-            length_score = 0.3
+            length_score = 0.2
         elif len(desc) < 50:
-            length_score = 0.6
+            length_score = 0.5
+        elif len(desc) < 80:
+            length_score = 0.7
         elif len(desc) > 500:
             length_score = 0.7
 
+        # Weighted scoring -- total weights = 10.0
+        # Core structure (must-have for good scores):
+        #   action_verb: 1.5  -- descriptions MUST start with a verb
+        #   scenario:    3.0  -- "use when" is the most impactful guidance
+        #   param_docs:  1.5  -- parameters need documentation
+        # Quality signals:
+        #   examples:    1.5  -- concrete examples help LLMs
+        #   error:       1.0  -- failure guidance
+        # Context signals:
+        #   disambig:    1.0  -- distinctness from sibling tools
+        #   length:      0.5  -- adequate length
         overall = (
-            (1.0 if has_scenario else 0.0) * 3.0
-            + (1.0 if has_examples else 0.0) * 2.0
-            + (1.0 if has_error_guidance else 0.0) * 1.5
-            + disambiguation * 2.0
-            + length_score * 1.5
-        ) / 10.0 * 10.0
+            (1.0 if has_action_verb else 0.0) * 1.5
+            + (1.0 if has_scenario else 0.0) * 3.0
+            + (1.0 if has_param_docs else 0.0) * 1.5
+            + (1.0 if has_examples else 0.0) * 1.5
+            + (1.0 if has_error_guidance else 0.0) * 1.0
+            + disambiguation * 1.0
+            + length_score * 0.5
+        )
 
         scores.append(
             ToolDescriptionScore(
                 tool_name=name,
+                has_action_verb=has_action_verb,
                 has_scenario_trigger=has_scenario,
                 has_param_examples=has_examples,
                 has_error_guidance=has_error_guidance,
+                has_param_docs=has_param_docs,
                 disambiguation_score=round(disambiguation, 2),
                 overall_score=round(min(10.0, overall), 1),
             )
@@ -239,10 +289,10 @@ def _extract_tools(path: Path) -> list[dict]:
     return tools
 
 
-def _word_overlap(a: str, b: str) -> float:
-    """Calculate word overlap ratio between two strings."""
-    words_a = set(a.lower().split())
-    words_b = set(b.lower().split())
+def _word_overlap(a: str, b: str, stop_words: set[str] | None = None) -> float:
+    """Calculate word overlap ratio between two strings, ignoring stop words."""
+    words_a = set(a.lower().split()) - (stop_words or set())
+    words_b = set(b.lower().split()) - (stop_words or set())
     if not words_a or not words_b:
         return 0.0
     intersection = words_a & words_b

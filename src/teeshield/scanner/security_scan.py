@@ -25,12 +25,20 @@ DANGEROUS_PATTERNS = {
             r"os\.system\(",
             r"os\.popen\(",
             r"subprocess\.(?:call|run|Popen)\([^)]*shell\s*=\s*True",
-            r"exec\(",
-            r"eval\(",
         ],
         "severity": "critical",
         "description": "Potential command injection -- user input may be executed as shell command",
         "fix": "Use subprocess with shell=False and explicit argument lists",
+    },
+    "dangerous_eval": {
+        "patterns": [
+            # exec/eval with variable input (not string literals)
+            r"exec\(\s*(?![\"\'])",
+            r"eval\(\s*(?![\"\'])",
+        ],
+        "severity": "critical",
+        "description": "Dynamic code execution -- user input may be executed as code",
+        "fix": "Use ast.literal_eval for data parsing, or avoid eval/exec entirely",
     },
     "sql_injection": {
         "patterns": [
@@ -45,15 +53,26 @@ DANGEROUS_PATTERNS = {
         "description": "Potential SQL injection -- query built with string interpolation",
         "fix": "Use parameterized queries with placeholder syntax",
     },
-    "credential_exposure": {
+    "hardcoded_credential": {
         "patterns": [
+            # Only flag hardcoded secrets (string literals assigned to secret-like vars)
             r'(?:api_key|token|secret|password)\s*=\s*["\'][^"\']{8,}',
-            r"os\.environ\.get\(['\"](?:API_KEY|TOKEN|SECRET|PASSWORD)",
-            r"os\.getenv\(['\"](?:API_KEY|TOKEN|SECRET|PASSWORD)",
         ],
-        "severity": "medium",
-        "description": "Credentials handled via plain environment variables",
-        "fix": "Use a secret manager or Astrix MCP Secret Wrapper",
+        "severity": "high",
+        "description": "Hardcoded credential -- secret value embedded in source code",
+        "fix": "Move secrets to environment variables or a secret manager",
+    },
+    "unsafe_deserialization": {
+        "patterns": [
+            r"pickle\.loads?\(",
+            r"yaml\.load\(\s*(?!.*Loader\s*=\s*yaml\.SafeLoader)",
+            r"yaml\.unsafe_load\(",
+            r"marshal\.loads?\(",
+            r"shelve\.open\(",
+        ],
+        "severity": "critical",
+        "description": "Unsafe deserialization -- untrusted data may execute arbitrary code",
+        "fix": "Use yaml.safe_load, json.loads, or other safe deserialization methods",
     },
     "ssrf": {
         "patterns": [
@@ -67,10 +86,13 @@ DANGEROUS_PATTERNS = {
     },
     "no_input_validation": {
         "patterns": [
-            r"def\s+\w+\(.*:\s*str\).*:\s*$",
+            # Only flag MCP tool handler functions that take raw string params
+            # (functions decorated with @tool, @server.tool, or named call_tool/handle)
+            r"@(?:mcp|server|app)\.tool\b.*\n\s*(?:async\s+)?def\s+\w+\(.*:\s*str[,\)]",
+            r"@tool\b.*\n\s*(?:async\s+)?def\s+\w+\(.*:\s*str[,\)]",
         ],
         "severity": "low",
-        "description": "Function accepts raw string input without validation",
+        "description": "MCP tool handler accepts raw string input without validation",
         "fix": "Add input validation (length limits, allowlists, sanitization)",
     },
 }
