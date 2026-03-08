@@ -1,10 +1,19 @@
 # TeeShield -- Security Scanner for MCP tools
 
-Scan, rate, and improve MCP server tool descriptions so AI agents use them correctly.
+**`npm audit` for MCP tools.** Scan tool definitions and detect unsafe descriptions before AI agents misuse them.
 
-We scanned 7 public MCP servers (79 tools) and found the average description quality is **3.1 / 10**. Most tools give agents zero guidance on when to use them, what parameters to pass, or what errors to expect.
+## Why TeeShield?
 
-TeeShield fixes this.
+We scanned **79 MCP tools across 7 public servers** and found:
+
+- Average description quality: **3.1 / 10**
+- 0% of tools have "Use when..." scenario triggers
+- 0% have parameter examples
+- Fewer than 5% have error handling guidance
+
+AI agents pick which tool to call based on the description text. A vague description like *"access filesystem"* gives the agent no boundaries -- it doesn't know which directories are safe, whether it should read or write, or what happens on failure.
+
+TeeShield scans tool descriptions, scores them, and rewrites them automatically.
 
 ## Install
 
@@ -77,6 +86,18 @@ The rewriter works offline using templates (zero cost). Set `ANTHROPIC_API_KEY` 
 | supabase | 30 | 9.0 | 2.3 | 6.4 | B |
 
 Full report: [CURATION-REPORT.md](CURATION-REPORT.md)
+
+## Try it on an example
+
+The repo includes example MCP servers for instant demo:
+
+```bash
+git clone https://github.com/teehooai/teeshield
+cd teeshield
+
+teeshield scan examples/insecure-server   # Rating: C (4.8/10)
+teeshield scan examples/secure-server     # Rating: B (7.2/10)
+```
 
 ## What TeeShield checks
 
