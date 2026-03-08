@@ -76,8 +76,6 @@ def _score_tests(path: Path) -> tuple[float, bool]:
                 test_file_count += len(list(test_dir.rglob("*")))
                 break
 
-    has_tests = test_file_count > 0
-
     if test_file_count == 0:
         return 0.0, False
     elif test_file_count == 1:
@@ -107,7 +105,6 @@ def _score_error_handling(path: Path, source_files: list[Path]) -> tuple[float, 
         if "try:" in content or "try {" in content or "catch" in content:
             files_with_handling += 1
 
-    has_error_handling = files_with_handling > 0
     ratio = files_with_handling / len(source_files)
 
     if ratio == 0:
@@ -167,7 +164,12 @@ def _score_type_hints(path: Path, source_files: list[Path]) -> float:
         except OSError:
             continue
         # Check for return type annotations or parameter annotations
-        if re.search(r"def \w+\(.*\)\s*->", content) or re.search(r":\s*(?:str|int|float|bool|list|dict|tuple|Path|Optional)\b", content):
+        has_return = re.search(r"def \w+\(.*\)\s*->", content)
+        has_type = re.search(
+            r":\s*(?:str|int|float|bool|list|dict|tuple|Path|Optional)\b",
+            content,
+        )
+        if has_return or has_type:
             files_with_hints += 1
 
     ratio = files_with_hints / len(py_files) if py_files else 0
@@ -218,7 +220,8 @@ def _score_env_config(path: Path) -> float:
         if readme.exists():
             try:
                 content = readme.read_text(errors="ignore")
-                if re.search(r"(?:environment|env|config).{0,20}(?:variable|setting|key)", content, re.I):
+                env_pat = r"(?:environment|env|config).{0,20}(?:variable|setting|key)"
+                if re.search(env_pat, content, re.I):
                     return 0.3
             except OSError:
                 pass

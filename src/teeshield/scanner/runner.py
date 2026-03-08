@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import sys
+from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
 
 from teeshield.models import ScanReport
+from teeshield.scanner.architecture_check import check_architecture
+from teeshield.scanner.description_quality import score_descriptions
 from teeshield.scanner.license_check import check_license
 from teeshield.scanner.security_scan import scan_security
-from teeshield.scanner.description_quality import score_descriptions
-from teeshield.scanner.architecture_check import check_architecture
 
 console = Console()
 stderr_console = Console(file=sys.stderr)
@@ -28,13 +26,19 @@ def resolve_target(target: str) -> Path:
 
     if target.startswith(("http://", "https://", "git@", "github.com")):
         import subprocess
+        import tempfile
 
-        clone_dir = Path("./tmp_scan") / target.split("/")[-1].replace(".git", "")
-        if clone_dir.exists():
-            import shutil
-
-            shutil.rmtree(clone_dir)
-        subprocess.run(["git", "clone", "--depth", "1", target, str(clone_dir)], check=True)
+        repo_name = target.split("/")[-1].replace(".git", "")
+        clone_dir = Path(tempfile.mkdtemp(prefix="teeshield_")) / repo_name
+        try:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", target, str(clone_dir)],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            console.print(f"[red]Failed to clone {target}: {e.stderr.decode().strip()}[/red]")
+            raise SystemExit(1)
         return clone_dir
 
     console.print(f"[red]Target not found: {target}[/red]")
@@ -161,7 +165,11 @@ def _score_color(score: float) -> str:
 
 def _severity_color(severity: str) -> str:
     """Return a Rich color tag for a severity level."""
-    return {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}.get(severity, "dim")
+    colors = {
+        "critical": "red bold", "high": "red",
+        "medium": "yellow", "low": "dim",
+    }
+    return colors.get(severity, "dim")
 
 
 def _print_table(report: ScanReport):
@@ -179,7 +187,8 @@ def _print_table(report: ScanReport):
     table.add_row("Tools", str(report.tool_count), warn if report.tool_count > 40 else ok)
 
     sc = _score_color(report.security_score)
-    table.add_row("Security", f"{len(report.security_issues)} issues", f"[{sc}]{report.security_score}/10[/{sc}]")
+    sec_val = f"{len(report.security_issues)} issues"
+    table.add_row("Security", sec_val, f"[{sc}]{report.security_score}/10[/{sc}]")
     dc = _score_color(report.description_score)
     table.add_row("Descriptions", "", f"[{dc}]{report.description_score}/10[/{dc}]")
     ac = _score_color(report.architecture_score)

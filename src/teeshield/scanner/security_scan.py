@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import re
 from pathlib import Path
 
@@ -103,12 +102,19 @@ TS_DANGEROUS_PATTERNS = {
         "patterns": [
             # Object.assign with user input, deep merge without protection
             r"Object\.assign\(\s*\{\s*\}\s*,",
-            r"\[key\]\s*=\s*(?:value|val|v|data|input|params|args)",
+            # Only flag [key]=value when the key comes from user/external input
+            r"\[(?:input|params|args|body|query|req)\.\w*\]\s*=",
             r"(?:lodash|_)\.merge\(",
         ],
         "severity": "high",
-        "description": "Potential prototype pollution -- user-controlled keys may modify Object.prototype",
-        "fix": "Use Map instead of plain objects, or validate keys against a denylist (__proto__, constructor, prototype)",
+        "description": (
+            "Potential prototype pollution -- user-controlled keys"
+            " may modify Object.prototype"
+        ),
+        "fix": (
+            "Use Map instead of plain objects, or validate keys"
+            " against a denylist (__proto__, constructor, prototype)"
+        ),
     },
     "child_process_injection": {
         "patterns": [
@@ -118,7 +124,10 @@ TS_DANGEROUS_PATTERNS = {
             r"exec\(\s*`",  # template literal in exec
         ],
         "severity": "critical",
-        "description": "Potential command injection via child_process -- user input may be executed as shell command",
+        "description": (
+            "Potential command injection via child_process"
+            " -- user input may be executed as shell command"
+        ),
         "fix": "Use child_process.execFile or spawn with explicit argument arrays",
     },
     "ts_unsafe_eval": {
@@ -129,7 +138,10 @@ TS_DANGEROUS_PATTERNS = {
             r"vm\.runInThisContext\(",
         ],
         "severity": "critical",
-        "description": "Dynamic code execution via eval/Function/vm -- user input may run arbitrary code",
+        "description": (
+            "Dynamic code execution via eval/Function/vm"
+            " -- user input may run arbitrary code"
+        ),
         "fix": "Avoid eval and new Function; use structured data parsing instead",
     },
     "ts_sql_injection": {
@@ -148,7 +160,10 @@ TS_DANGEROUS_PATTERNS = {
         ],
         "severity": "high",
         "description": "Potential path traversal -- user input used in file system operations",
-        "fix": "Validate and resolve paths against an allowed base directory using path.resolve + startsWith check",
+        "fix": (
+            "Validate and resolve paths against an allowed base"
+            " directory using path.resolve + startsWith check"
+        ),
     },
 }
 
@@ -162,7 +177,11 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
 
     source_files = list(path.rglob("*.py")) + list(path.rglob("*.ts")) + list(path.rglob("*.js"))
     # Exclude non-source directories from security scanning
-    exclude_dirs = {"node_modules", "__pycache__", "__tests__", "tests", "test", ".git", "dist", "build", ".venv", "venv", ".tox", ".mypy_cache", "examples", "example"}
+    exclude_dirs = {
+        "node_modules", "__pycache__", "__tests__", "tests", "test",
+        ".git", "dist", "build", ".venv", "venv", ".tox",
+        ".mypy_cache", "examples", "example",
+    }
     source_files = [
         f for f in source_files
         if not any(part in exclude_dirs for part in f.parts)

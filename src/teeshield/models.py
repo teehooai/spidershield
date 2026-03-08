@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class Rating(str, Enum):
+class Rating(StrEnum):
     """Certification rating levels."""
 
     F = "F"  # Flagged --known security issues

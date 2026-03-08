@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 # Permissive licenses that allow forking, modifying, and selling
-PERMISSIVE_LICENSES = {"mit", "apache-2.0", "apache 2.0", "bsd-2-clause", "bsd-3-clause", "isc", "unlicense"}
+PERMISSIVE_LICENSES = {
+    "mit", "apache-2.0", "apache 2.0",
+    "bsd-2-clause", "bsd-3-clause", "isc", "unlicense",
+}
 COPYLEFT_LICENSES = {"gpl", "agpl", "lgpl"}
 
 

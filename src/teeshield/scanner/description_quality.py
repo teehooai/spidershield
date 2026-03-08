@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
-import ast
-import json
 import re
 from pathlib import Path
 
 from teeshield.models import ToolDescriptionScore
+
+_ACTION_VERBS = (
+    "read", "write", "create", "delete", "remove", "list", "get", "set",
+    "update", "search", "find", "query", "fetch", "send", "run", "execute",
+    "check", "validate", "show", "display", "add", "edit", "move", "copy",
+    "rename", "monitor", "scan", "analyze", "parse", "convert", "generate",
+    "deploy", "install", "configure", "connect", "disconnect", "start", "stop",
+    "reset", "restore", "backup", "export", "import", "subscribe", "publish",
+    "retrieve", "return", "compute", "calculate", "open", "close", "log",
+    "commit", "push", "pull", "merge", "checkout", "diff", "apply", "revert",
+)
 
 
 def score_descriptions(
@@ -37,16 +46,6 @@ def score_descriptions(
         desc = tool.get("description", "")
 
         # 1. Action verb: description starts with a verb (imperative mood)
-        _ACTION_VERBS = (
-            "read", "write", "create", "delete", "remove", "list", "get", "set",
-            "update", "search", "find", "query", "fetch", "send", "run", "execute",
-            "check", "validate", "show", "display", "add", "edit", "move", "copy",
-            "rename", "monitor", "scan", "analyze", "parse", "convert", "generate",
-            "deploy", "install", "configure", "connect", "disconnect", "start", "stop",
-            "reset", "restore", "backup", "export", "import", "subscribe", "publish",
-            "retrieve", "return", "compute", "calculate", "open", "close", "log",
-            "commit", "push", "pull", "merge", "checkout", "diff", "apply", "revert",
-        )
         first_word = desc.split()[0].lower().rstrip("s") if desc.strip() else ""
         has_action_verb = first_word in _ACTION_VERBS or first_word.rstrip("e") in _ACTION_VERBS
 
@@ -57,9 +56,11 @@ def score_descriptions(
         has_examples = bool(re.search(r"(?:e\.g\.|example|for instance|such as|like )", desc, re.I))
 
         # 4. Error guidance: failure modes and troubleshooting
-        has_error_guidance = bool(
-            re.search(r"(?:error|fail|common issue|if .* fails|troubleshoot|raise|exception|invalid)", desc, re.I)
+        error_pat = (
+            r"(?:error|fail|common issue|if .* fails"
+            r"|troubleshoot|raise|exception|invalid)"
         )
+        has_error_guidance = bool(re.search(error_pat, desc, re.I))
 
         # 5. Parameter documentation: mentions input parameters or accepted values
         has_param_docs = bool(re.search(
@@ -129,7 +130,10 @@ def _extract_tools(path: Path) -> list[dict]:
     """Extract tool definitions from Python or TypeScript MCP server code."""
     tools: list[dict] = []
 
-    skip_dirs = {"node_modules", "__pycache__", ".venv", "venv", ".git", "dist", "build", ".tox", ".mypy_cache"}
+    skip_dirs = {
+        "node_modules", "__pycache__", ".venv", "venv", ".git",
+        "dist", "build", ".tox", ".mypy_cache",
+    }
 
     # Python: look for @tool or @server.tool decorators
     for py_file in path.rglob("*.py"):
@@ -278,8 +282,11 @@ def _extract_tools(path: Path) -> list[dict]:
             name = match.group(1)
             desc = (match.group(2) or match.group(3) or match.group(4) or "").strip()
             desc = re.sub(r"\s*\n\s*", " ", desc).strip()
-            skip_names = {"type", "default", "title", "label", "name", "id", "key", "value", "message",
-                          "description", "scope", "inputSchema", "outputSchema", "annotations"}
+            skip_names = {
+                "type", "default", "title", "label", "name",
+                "id", "key", "value", "message", "description",
+                "scope", "inputSchema", "outputSchema", "annotations",
+            }
             if name in skip_names:
                 continue
             if name not in existing_names:

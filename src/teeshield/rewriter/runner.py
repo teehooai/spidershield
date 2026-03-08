@@ -56,7 +56,6 @@ VERB_MAP = {
     "status": "Show",
     "open": "Open",
     "close": "Close",
-    "query": "Query",
 }
 
 # Scenario triggers based on tool name patterns
@@ -81,68 +80,11 @@ SCENARIO_TRIGGERS = {
     "reset": "Use when the user wants to undo staged changes or restore to a previous state.",
 }
 
-# Error guidance based on tool category
-ERROR_GUIDANCE = {
-    "file": "If the path does not exist, verify the path is within allowed directories. Check file permissions if access is denied.",
-    "directory": "If the directory does not exist, create it first or check the path for typos.",
-    "git": "If the operation fails, ensure you are inside a valid git repository and the working tree is clean.",
-    "network": "If the request fails, check the URL is reachable and properly formatted. Timeouts may occur for large pages.",
-    "database": "If the query fails, verify table and column names. Check connection settings if the database is unreachable.",
-    "search": "If no results are found, try broader search terms or check that the target path exists.",
-}
+# NOTE: Generic error guidance removed (v0.2).
+# Tautological boilerplate like "If the path does not exist, verify the path"
+# was the #1 reason PRs got rejected. Error guidance must be domain-specific
+# and is only appropriate in LLM-powered rewrites, not templates.
 
-
-def _infer_category(name: str, desc: str) -> str:
-    """Infer the tool category from its name and description."""
-    text = f"{name} {desc}".lower()
-    if any(w in text for w in ["file", "read", "write", "path", "content"]):
-        return "file"
-    if any(w in text for w in ["directory", "dir", "folder", "tree"]):
-        return "directory"
-    if any(w in text for w in ["git", "commit", "branch", "diff", "staged"]):
-        return "git"
-    if any(w in text for w in ["fetch", "url", "http", "request", "network"]):
-        return "network"
-    if any(w in text for w in ["query", "sql", "database", "table"]):
-        return "database"
-    if any(w in text for w in ["search", "find", "grep", "pattern"]):
-        return "search"
-    return "file"
-
-
-def _find_similar_tools(name: str, all_tools: list[dict]) -> list[str]:
-    """Find tools with similar names for disambiguation."""
-    name_words = set(name.lower().replace("_", " ").replace("-", " ").split())
-
-    # Compute common prefix words shared by most tools (e.g., "git", "kubectl")
-    # These are too generic for disambiguation
-    all_word_sets = [
-        set(t["name"].lower().replace("_", " ").replace("-", " ").split())
-        for t in all_tools
-    ]
-    if len(all_word_sets) >= 3:
-        from collections import Counter
-        word_freq = Counter(w for ws in all_word_sets for w in ws)
-        threshold = len(all_tools) * 0.3
-        common_words = {w for w, c in word_freq.items() if c >= threshold}
-    else:
-        common_words = set()
-
-    # Only consider non-common words for overlap
-    meaningful_words = name_words - common_words
-    if not meaningful_words:
-        return []
-
-    similar = []
-    for t in all_tools:
-        if t["name"] == name:
-            continue
-        other_words = set(t["name"].lower().replace("_", " ").replace("-", " ").split())
-        other_meaningful = other_words - common_words
-        overlap = meaningful_words & other_meaningful
-        if overlap:
-            similar.append(t["name"])
-    return similar
 
 
 def _rewrite_local(tool: dict, all_tools: list[dict]) -> str:
@@ -185,25 +127,24 @@ def _rewrite_local(tool: dict, all_tools: list[dict]) -> str:
     else:
         opening = f"{verb or 'Perform'} the {name.replace('_', ' ')} operation."
 
-    # 2. Add scenario trigger (only if it adds value beyond the opening)
+    # 2. Add scenario trigger (only from known patterns, never tautological)
     scenario = ""
     for key, trigger in SCENARIO_TRIGGERS.items():
         if key in name_lower:
             scenario = trigger
             break
-    if not scenario:
-        scenario = f"Use when the user wants to {name.replace('_', ' ')}."
+    # NOTE: No fallback -- a tautological "Use when the user wants to
+    # {name}" is worse than no scenario at all. Only LLM rewrites can
+    # generate domain-aware scenarios for unknown tool names.
 
-    # 3. Add disambiguation (only for genuinely similar tools)
-    similar = _find_similar_tools(name, all_tools)
-    disambig = ""
-    if similar:
-        disambig = f"Unlike {', '.join(similar[:2])}, this tool specifically handles {name.replace('_', ' ')}."
-
-    # 4. Compose final description (no generic error boilerplate)
-    parts = [opening, scenario]
-    if disambig:
-        parts.append(disambig)
+    # 3. Compose final description
+    # NOTE: Mechanical disambiguation ("Unlike X, this tool specifically
+    # handles Y") removed in v0.2 -- it was the #1 pattern flagged by
+    # maintainers as tautological.  Genuine disambiguation requires
+    # understanding what the tools actually do differently.
+    parts = [opening]
+    if scenario:
+        parts.append(scenario)
 
     return " ".join(parts)
 
@@ -277,8 +218,6 @@ def run_rewrite(
 
 def _print_comparison(results: list[dict]):
     """Print a before/after comparison table."""
-    from teeshield.scanner.description_quality import score_descriptions
-    from teeshield.models import ToolDescriptionScore
 
     table = Table(title="Description Rewrite Results", show_lines=True)
     table.add_column("Tool", style="bold", width=20)
@@ -303,7 +242,7 @@ def _print_comparison(results: list[dict]):
     avg_new = sum(new_scores) / len(new_scores) if new_scores else 0
     delta = avg_new - avg_orig
 
-    console.print(f"\n[bold]Description Quality:[/bold]")
+    console.print("\n[bold]Description Quality:[/bold]")
     console.print(f"  Before: {avg_orig:.1f}/10")
     console.print(f"  After:  {avg_new:.1f}/10")
     color = "green" if delta > 0 else "red"
@@ -312,16 +251,8 @@ def _print_comparison(results: list[dict]):
 
 def _quick_score(desc: str) -> float:
     """Quick-score a description using the same criteria as the scanner."""
-    _ACTION_VERBS = (
-        "read", "write", "create", "delete", "remove", "list", "get", "set",
-        "update", "search", "find", "query", "fetch", "send", "run", "execute",
-        "check", "validate", "show", "display", "add", "edit", "move", "copy",
-        "rename", "monitor", "scan", "analyze", "parse", "convert", "generate",
-        "deploy", "install", "configure", "connect", "disconnect", "start", "stop",
-        "reset", "restore", "backup", "export", "import", "subscribe", "publish",
-        "retrieve", "return", "compute", "calculate", "open", "close", "log",
-        "commit", "push", "pull", "merge", "checkout", "diff", "apply", "revert",
-    )
+    from teeshield.scanner.description_quality import _ACTION_VERBS
+
     first_word = desc.split()[0].lower().rstrip("s") if desc.strip() else ""
     has_verb = first_word in _ACTION_VERBS or first_word.rstrip("e") in _ACTION_VERBS
     has_scenario = bool(re.search(r"(?:use (?:this )?when|use for|call this)", desc, re.I))

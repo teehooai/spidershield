@@ -105,27 +105,33 @@ teeshield scan examples/secure-server     # Rating: B (7.2/10)
 
 ## What TeeShield checks
 
-**Descriptions** (weighted 40%)
+**Security** (weighted 40%)
+- Path traversal
+- Command injection / dangerous eval
+- SQL injection (Python + TypeScript)
+- SSRF (unrestricted network access)
+- Hardcoded credentials
+- Unsafe deserialization (pickle, yaml.load)
+- Prototype pollution (TypeScript)
+
+**Descriptions** (weighted 35%)
+- Action verb starts ("List", "Create", "Execute")
 - Scenario triggers ("Use when the user wants to...")
+- Parameter documentation
 - Parameter examples
 - Error handling guidance
 - Disambiguation between similar tools
 - Length (too short = vague, too long = noisy)
 
-**Security** (weighted 30%)
-- Path traversal
-- Command injection
-- SQL injection
-- SSRF (unrestricted network access)
-- Credential exposure
-
-**Architecture** (weighted 20%)
-- Test coverage
-- Error handling
+**Architecture** (weighted 25%)
+- Test coverage (gradual: count-based)
+- Error handling (gradual: coverage-based)
+- README quality (gradual: length-based)
 - Type annotations
-- Input validation patterns
+- Dependency management
+- Environment configuration
 
-**License** (weighted 10%)
+**License** (pass/fail gate, not weighted)
 - MIT, Apache-2.0, BSD = OK
 - GPL, AGPL = warning
 - Missing = fail

@@ -36,7 +36,7 @@ def run_eval(
     """Run before/after evaluation of tool selection accuracy."""
     models = models or ["claude-sonnet-4-20250514"]
 
-    console.print(f"\n[bold]Evaluating tool selection accuracy[/bold]")
+    console.print("\n[bold]Evaluating tool selection accuracy[/bold]")
     console.print(f"  Original: {original}")
     console.print(f"  Improved: {improved}")
     console.print(f"  Models:   {', '.join(models)}\n")
