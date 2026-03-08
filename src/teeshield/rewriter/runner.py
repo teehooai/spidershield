@@ -54,6 +54,9 @@ VERB_MAP = {
     "reset": "Reset",
     "log": "Show",
     "status": "Show",
+    "open": "Open",
+    "close": "Close",
+    "query": "Query",
 }
 
 # Scenario triggers based on tool name patterns
@@ -138,7 +141,7 @@ def _rewrite_local(tool: dict, all_tools: list[dict]) -> str:
         r'^(?:(?:Recursively|Safely|Securely|Efficiently)\s+)?'
         r'(?:Get|Show|List|Read|Write|Create|Delete|Move|Search|Find|Retrieve|'
         r'Execute|Run|Make|Return|Record|Unstage|Switch|Add|Fetch|Compare|Commit|'
-        r'Reset|Edit|Copy|Rename)(?:s|es|ed|ing)?\s+',
+        r'Reset|Edit|Copy|Rename|Open|Close|Set|Update|Remove|Query)(?:s|es|ed|ing)?\s+',
         clean_desc, re.IGNORECASE
     )
     if leading_verb:

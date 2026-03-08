@@ -9,7 +9,7 @@ console = Console()
 @click.group()
 @click.version_option()
 def main():
-    """TeeShield — Scan, improve, and certify MCP servers."""
+    """TeeShield -- Scan, improve, and certify MCP servers."""
 
 
 @main.command()

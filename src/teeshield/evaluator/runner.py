@@ -120,7 +120,7 @@ def _evaluate_server(
 
         client = anthropic.Anthropic()
     except ImportError:
-        console.print("[yellow]anthropic not installed — using heuristic matching[/yellow]")
+        console.print("[yellow]anthropic not installed -- using heuristic matching[/yellow]")
         # Fallback: simple keyword matching
         for scenario in scenarios:
             for model in models:
@@ -216,7 +216,7 @@ def _fuzzy_match_tool(selected: str, tool_names: list[str]) -> str:
 
 def _print_report(report: EvalReport):
     """Print a rich comparison table."""
-    table = Table(title="Tool Selection Accuracy — Before vs After")
+    table = Table(title="Tool Selection Accuracy - Before vs After")
     table.add_column("Metric", style="bold")
     table.add_column("Original", justify="right")
     table.add_column("Improved", justify="right")

@@ -1,4 +1,4 @@
-"""Hardener runner — applies security fixes to MCP servers."""
+"""Hardener runner --applies security fixes to MCP servers."""
 
 from __future__ import annotations
 
@@ -50,10 +50,10 @@ def run_harden(
     # Summary
     console.print(f"\n[bold]Summary:[/bold] {len(fixes_applied)} fixes {'would be ' if dry_run else ''}applied")
     for fix in fixes_applied:
-        console.print(f"  ✅ {fix}")
+        console.print(f"  [green]+[/green] {fix}")
 
     if dry_run:
-        console.print("\n[yellow]Dry run — no files were modified. Remove --dry-run to apply.[/yellow]")
+        console.print("\n[yellow]Dry run --no files were modified. Remove --dry-run to apply.[/yellow]")
     else:
         console.print("\n[green]Hardening complete.[/green] Run `teeshield scan` to verify.\n")
 
@@ -71,7 +71,7 @@ def _fix_credentials(path: Path, dry_run: bool) -> list[str]:
 
         if "os.environ" in content or "os.getenv" in content or "process.env" in content:
             rel = source_file.relative_to(path)
-            fixes.append(f"[credential] {rel}: Plain env var credential detected — wrap with secret manager")
+            fixes.append(f"[credential] {rel}: Plain env var credential detected --wrap with secret manager")
             # TODO: Apply Astrix Secret Wrapper
     return fixes
 
