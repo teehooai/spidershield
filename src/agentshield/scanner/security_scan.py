@@ -86,10 +86,16 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     issues: list[SecurityIssue] = []
 
     source_files = list(path.rglob("*.py")) + list(path.rglob("*.ts")) + list(path.rglob("*.js"))
-    # Exclude node_modules and test files from security scanning
+    # Exclude non-source directories from security scanning
+    exclude_dirs = {"node_modules", "__pycache__", "__tests__", "tests", "test", ".git", "dist", "build"}
     source_files = [
         f for f in source_files
-        if "node_modules" not in str(f) and "__pycache__" not in str(f)
+        if not any(part in exclude_dirs for part in f.parts)
+        and not f.name.startswith("test_")
+        and not f.name.endswith(".test.ts")
+        and not f.name.endswith(".test.js")
+        and not f.name.endswith(".spec.ts")
+        and not f.name.endswith(".spec.js")
     ]
 
     for source_file in source_files:
@@ -101,8 +107,9 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
         rel_path = str(source_file.relative_to(path))
 
         for category, config in DANGEROUS_PATTERNS.items():
+            flags = re.IGNORECASE if category != "sql_injection" else 0
             for pattern in config["patterns"]:
-                for match in re.finditer(pattern, content, re.IGNORECASE):
+                for match in re.finditer(pattern, content, flags):
                     line_num = content[:match.start()].count("\n") + 1
                     issues.append(
                         SecurityIssue(

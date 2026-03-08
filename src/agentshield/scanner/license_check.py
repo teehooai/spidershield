@@ -29,10 +29,22 @@ def check_license(path: Path) -> tuple[str | None, bool]:
         try:
             pkg = json.loads(pkg_json.read_text())
             license_str = pkg.get("license", "")
-            if license_str:
+            # Skip indirect references like "SEE LICENSE IN LICENSE"
+            if license_str and "see license" not in license_str.lower():
                 return _classify_from_name(license_str)
         except (json.JSONDecodeError, KeyError):
             pass
+
+    # Walk up to parent directories to find LICENSE (monorepo support)
+    for ancestor in path.parents:
+        for name in ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING"]:
+            license_file = ancestor / name
+            if license_file.exists():
+                content = license_file.read_text(errors="ignore").lower()
+                return _classify_license(content)
+        # Stop at git root
+        if (ancestor / ".git").exists():
+            break
 
     # Check pyproject.toml
     pyproject = path / "pyproject.toml"

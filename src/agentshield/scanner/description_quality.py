@@ -106,7 +106,34 @@ def _extract_tools(path: Path) -> list[dict]:
         for match in tool_pattern2:
             tools.append({"name": match.group(1), "description": match.group(2).strip()})
 
-    # TypeScript: look for server.tool() calls
+        # MCP SDK style: Tool(name="...", description="..." or """...""")
+        tool_pattern3 = re.finditer(
+            r'Tool\(\s*name\s*=\s*["\'](\w+)["\']\s*,\s*description\s*=\s*(?:"""(.*?)"""|["\']([^"\']+)["\'])',
+            content,
+            re.DOTALL,
+        )
+        for match in tool_pattern3:
+            name = match.group(1)
+            desc = (match.group(2) or match.group(3) or "").strip()
+            if name not in [t["name"] for t in tools]:
+                tools.append({"name": name, "description": desc})
+
+        # MCP SDK style with enum: Tool(name=GitTools.STATUS, ...)
+        # Extract the enum values first
+        enum_values = dict(re.findall(r'(\w+)\s*=\s*["\'](\w+)["\']', content))
+        tool_pattern4 = re.finditer(
+            r'Tool\(\s*name\s*=\s*(\w+)\.(\w+)\s*,\s*description\s*=\s*["\']([^"\']+)["\']',
+            content,
+        )
+        for match in tool_pattern4:
+            enum_member = match.group(2)
+            desc = match.group(3).strip()
+            # Try to resolve enum value
+            name = enum_values.get(enum_member, enum_member.lower())
+            if name not in [t["name"] for t in tools]:
+                tools.append({"name": name, "description": desc})
+
+    # TypeScript: look for server.tool() or server.registerTool() calls
     for ts_file in list(path.rglob("*.ts")) + list(path.rglob("*.js")):
         if "node_modules" in str(ts_file):
             continue
@@ -115,6 +142,7 @@ def _extract_tools(path: Path) -> list[dict]:
         except OSError:
             continue
 
+        # Pattern 1: server.tool("name", { description: "..." })
         tool_pattern = re.finditer(
             r'server\.tool\(\s*["\'](\w+)["\'].*?description:\s*["\']([^"\']+)["\']',
             content,
@@ -122,6 +150,21 @@ def _extract_tools(path: Path) -> list[dict]:
         )
         for match in tool_pattern:
             tools.append({"name": match.group(1), "description": match.group(2).strip()})
+
+        # Pattern 2: server.registerTool("name", { description: "..." })
+        # Description may be a concatenated string with +
+        reg_pattern = re.finditer(
+            r'server\.registerTool\(\s*["\'](\w+)["\']\s*,\s*\{[^}]*?description:\s*\n?\s*((?:["\'][^"\']*["\'](?:\s*\+\s*["\'][^"\']*["\'])*)|["\'][^"\']*["\'])',
+            content,
+            re.DOTALL,
+        )
+        for match in reg_pattern:
+            name = match.group(1)
+            raw_desc = match.group(2)
+            # Join concatenated strings: "foo" + "bar" -> "foobar"
+            desc = "".join(re.findall(r'["\']([^"\']*)["\']', raw_desc))
+            if name not in [t["name"] for t in tools]:
+                tools.append({"name": name, "description": desc.strip()})
 
     return tools
 

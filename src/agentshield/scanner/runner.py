@@ -65,15 +65,19 @@ def run_scan(target: str, output_path: str | None = None, output_format: str = "
     improvement_potential = 10.0 - overall
 
     # Determine rating
+    from agentshield.models import Rating
     if any(i.severity == "critical" for i in security_issues):
-        from agentshield.models import Rating
         rating = Rating.F
+    elif overall >= 9.0:
+        rating = Rating.A_PLUS
     elif overall >= 8.0:
-        from agentshield.models import Rating
+        rating = Rating.A
+    elif overall >= 6.0:
         rating = Rating.B
-    else:
-        from agentshield.models import Rating
+    elif overall >= 4.0:
         rating = Rating.C
+    else:
+        rating = Rating.F
 
     # Build recommendations
     recommendations = []
@@ -120,17 +124,20 @@ def run_scan(target: str, output_path: str | None = None, output_format: str = "
 
 def _print_table(report: ScanReport):
     """Print a rich table summary."""
-    table = Table(title=f"AgentShield Scan Report — {report.target}")
+    table = Table(title=f"AgentShield Scan Report - {report.target}")
     table.add_column("Metric", style="bold")
     table.add_column("Value")
     table.add_column("Score", justify="right")
 
-    table.add_row("License", report.license or "Unknown", "✅" if report.license_ok else "❌")
-    table.add_row("Tools", str(report.tool_count), "⚠️" if report.tool_count > 40 else "✅")
+    ok = "[green]OK[/green]"
+    fail = "[red]FAIL[/red]"
+    warn = "[yellow]WARN[/yellow]"
+    table.add_row("License", report.license or "Unknown", ok if report.license_ok else fail)
+    table.add_row("Tools", str(report.tool_count), warn if report.tool_count > 40 else ok)
     table.add_row("Security", f"{len(report.security_issues)} issues", f"{report.security_score}/10")
     table.add_row("Descriptions", "", f"{report.description_score}/10")
     table.add_row("Architecture", "", f"{report.architecture_score}/10")
-    table.add_row("Tests", "Yes" if report.has_tests else "No", "✅" if report.has_tests else "❌")
+    table.add_row("Tests", "Yes" if report.has_tests else "No", ok if report.has_tests else fail)
     table.add_row("", "", "")
     table.add_row("[bold]Overall[/bold]", f"Rating: {report.rating.value}", f"[bold]{report.overall_score}/10[/bold]")
     table.add_row("Improvement Potential", "", f"{report.improvement_potential}/10")
@@ -145,6 +152,6 @@ def _print_table(report: ScanReport):
     if report.recommendations:
         console.print("\n[bold]Recommendations:[/bold]")
         for rec in report.recommendations:
-            console.print(f"  → {rec}")
+            console.print(f"  > {rec}")
 
     console.print()
