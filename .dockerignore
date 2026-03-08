@@ -1,0 +1,7 @@
+.git
+.pytest_cache
+__pycache__
+*.pyc
+test-targets
+tmp_scan
+.ruff_cache

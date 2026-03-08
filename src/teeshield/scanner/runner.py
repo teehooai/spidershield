@@ -41,36 +41,20 @@ def resolve_target(target: str) -> Path:
     raise SystemExit(1)
 
 
-def run_scan(target: str, output_path: str | None = None, output_format: str = "table"):
-    """Run a full scan on an MCP server."""
-    # Use stderr for progress when outputting JSON to stdout
-    log = stderr_console if (output_format == "json" and not output_path) else console
-    log.print(f"\n[bold]Scanning:[/bold] {target}\n")
-
+def run_scan_report(target: str) -> ScanReport:
+    """Run a full scan and return the report object."""
     path = resolve_target(target)
 
-    # Stage 1: License
-    log.print("[dim]Stage 1/4: License check...[/dim]")
     license_info, license_ok = check_license(path)
-
-    # Stage 2: Security
-    log.print("[dim]Stage 2/4: Security scan...[/dim]")
     security_score, security_issues = scan_security(path)
-
-    # Stage 3: Description quality
-    log.print("[dim]Stage 3/4: Description quality...[/dim]")
     desc_score, tool_scores, tool_names = score_descriptions(path)
-
-    # Stage 4: Architecture
-    log.print("[dim]Stage 4/4: Architecture check...[/dim]")
     arch_score, has_tests, has_error_handling = check_architecture(path)
 
-    # Compute overall
     overall = (security_score * 0.4 + desc_score * 0.35 + arch_score * 0.25)
     improvement_potential = 10.0 - overall
 
-    # Determine rating
     from teeshield.models import Rating
+
     if any(i.severity == "critical" for i in security_issues):
         rating = Rating.F
     elif overall >= 9.0:
@@ -84,7 +68,6 @@ def run_scan(target: str, output_path: str | None = None, output_format: str = "
     else:
         rating = Rating.F
 
-    # Build recommendations
     recommendations = []
     if desc_score < 6.0:
         recommendations.append("Run `teeshield rewrite` to optimize tool descriptions for LLMs")
@@ -97,7 +80,7 @@ def run_scan(target: str, output_path: str | None = None, output_format: str = "
     if not has_tests:
         recommendations.append("Add automated tests for reliability")
 
-    report = ScanReport(
+    return ScanReport(
         target=target,
         license=license_info,
         license_ok=license_ok,
@@ -115,6 +98,20 @@ def run_scan(target: str, output_path: str | None = None, output_format: str = "
         rating=rating,
         recommendations=recommendations,
     )
+
+
+def run_scan(target: str, output_path: str | None = None, output_format: str = "table"):
+    """Run a full scan on an MCP server."""
+    # Use stderr for progress when outputting JSON to stdout
+    log = stderr_console if (output_format == "json" and not output_path) else console
+    log.print(f"\n[bold]Scanning:[/bold] {target}\n")
+
+    log.print("[dim]Stage 1/4: License check...[/dim]")
+    log.print("[dim]Stage 2/4: Security scan...[/dim]")
+    log.print("[dim]Stage 3/4: Description quality...[/dim]")
+    log.print("[dim]Stage 4/4: Architecture check...[/dim]")
+
+    report = run_scan_report(target)
 
     if output_format == "json" or output_path:
         json_str = report.model_dump_json(indent=2)
