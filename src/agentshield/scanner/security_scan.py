@@ -15,11 +15,9 @@ DANGEROUS_PATTERNS = {
             r"os\.path\.join\([^)]*\.\.",
             r"open\([^)]*\+",
             r'Path\([^)]*\+',
-            r"\.\.\/",
-            r"\.\.[/\\]",
         ],
         "severity": "high",
-        "description": "Potential path traversal — user input may escape intended directory",
+        "description": "Potential path traversal -- user input may escape intended directory",
         "fix": "Validate and resolve paths against an allowed base directory",
     },
     "command_injection": {
@@ -31,7 +29,7 @@ DANGEROUS_PATTERNS = {
             r"eval\(",
         ],
         "severity": "critical",
-        "description": "Potential command injection — user input may be executed as shell command",
+        "description": "Potential command injection -- user input may be executed as shell command",
         "fix": "Use subprocess with shell=False and explicit argument lists",
     },
     "sql_injection": {
@@ -44,7 +42,7 @@ DANGEROUS_PATTERNS = {
             r'\.execute\([^)]*\+',
         ],
         "severity": "critical",
-        "description": "Potential SQL injection — query built with string interpolation",
+        "description": "Potential SQL injection -- query built with string interpolation",
         "fix": "Use parameterized queries with placeholder syntax",
     },
     "credential_exposure": {
@@ -64,7 +62,7 @@ DANGEROUS_PATTERNS = {
             r"fetch\([^)]*(?:url|endpoint)",
         ],
         "severity": "medium",
-        "description": "Potential SSRF — unrestricted network requests with user-controlled URLs",
+        "description": "Potential SSRF -- unrestricted network requests with user-controlled URLs",
         "fix": "Validate URLs against an allowlist of permitted domains",
     },
     "no_input_validation": {

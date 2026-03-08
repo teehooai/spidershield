@@ -166,6 +166,28 @@ def _extract_tools(path: Path) -> list[dict]:
             if name not in [t["name"] for t in tools]:
                 tools.append({"name": name, "description": desc.strip()})
 
+        # Pattern 3: Object literal tool defs (Supabase-style)
+        # e.g. { tool_name: { description: '...', parameters: ... } }
+        obj_pattern = re.finditer(
+            r'(\w+)\s*:\s*\{\s*\n?\s*description\s*:\s*\n?\s*["\']([^"\']+)["\']',
+            content,
+        )
+        for match in obj_pattern:
+            name = match.group(1)
+            desc = match.group(2).strip()
+            # Skip non-tool entries (common property names)
+            if name in {"type", "default", "title", "label", "name", "id", "key", "value", "message"}:
+                continue
+            if name not in [t["name"] for t in tools]:
+                tools.append({"name": name, "description": desc})
+
+        # Pattern 3b: Object literal with multi-line description
+        obj_pattern_ml = re.finditer(
+            r'(\w+)\s*:\s*\{\s*\n?\s*description\s*:\s*\n?\s*["\']([^"\']*)["\']',
+            content,
+        )
+        # Already handled by pattern above
+
     return tools
 
 
