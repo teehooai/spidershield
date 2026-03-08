@@ -97,6 +97,61 @@ DANGEROUS_PATTERNS = {
     },
 }
 
+# TypeScript / JavaScript specific patterns (checked only for .ts/.js files)
+TS_DANGEROUS_PATTERNS = {
+    "prototype_pollution": {
+        "patterns": [
+            # Object.assign with user input, deep merge without protection
+            r"Object\.assign\(\s*\{\s*\}\s*,",
+            r"\[key\]\s*=\s*(?:value|val|v|data|input|params|args)",
+            r"(?:lodash|_)\.merge\(",
+        ],
+        "severity": "high",
+        "description": "Potential prototype pollution -- user-controlled keys may modify Object.prototype",
+        "fix": "Use Map instead of plain objects, or validate keys against a denylist (__proto__, constructor, prototype)",
+    },
+    "child_process_injection": {
+        "patterns": [
+            r"child_process\.exec\(",
+            r"child_process\.execSync\(",
+            r"execSync\(",
+            r"exec\(\s*`",  # template literal in exec
+        ],
+        "severity": "critical",
+        "description": "Potential command injection via child_process -- user input may be executed as shell command",
+        "fix": "Use child_process.execFile or spawn with explicit argument arrays",
+    },
+    "ts_unsafe_eval": {
+        "patterns": [
+            r"new\s+Function\(",
+            r"eval\(",
+            r"vm\.runInNewContext\(",
+            r"vm\.runInThisContext\(",
+        ],
+        "severity": "critical",
+        "description": "Dynamic code execution via eval/Function/vm -- user input may run arbitrary code",
+        "fix": "Avoid eval and new Function; use structured data parsing instead",
+    },
+    "ts_sql_injection": {
+        "patterns": [
+            r"\.query\(\s*`[^`]*\$\{",   # template literal with interpolation in query()
+            r"\.execute\(\s*`[^`]*\$\{",  # template literal with interpolation in execute()
+        ],
+        "severity": "critical",
+        "description": "Potential SQL injection -- query built with template literal interpolation",
+        "fix": "Use parameterized queries ($1, $2) instead of template literal interpolation",
+    },
+    "ts_path_traversal": {
+        "patterns": [
+            r"path\.join\([^)]*(?:req\.|params\.|query\.|body\.|input|args)",
+            r"fs\.(?:readFile|writeFile|unlink|rmdir|mkdir)(?:Sync)?\([^)]*\+",
+        ],
+        "severity": "high",
+        "description": "Potential path traversal -- user input used in file system operations",
+        "fix": "Validate and resolve paths against an allowed base directory using path.resolve + startsWith check",
+    },
+}
+
 
 def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     """Scan for security issues in Python and TypeScript files.
@@ -107,7 +162,7 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
 
     source_files = list(path.rglob("*.py")) + list(path.rglob("*.ts")) + list(path.rglob("*.js"))
     # Exclude non-source directories from security scanning
-    exclude_dirs = {"node_modules", "__pycache__", "__tests__", "tests", "test", ".git", "dist", "build", ".venv", "venv", ".tox", ".mypy_cache"}
+    exclude_dirs = {"node_modules", "__pycache__", "__tests__", "tests", "test", ".git", "dist", "build", ".venv", "venv", ".tox", ".mypy_cache", "examples", "example"}
     source_files = [
         f for f in source_files
         if not any(part in exclude_dirs for part in f.parts)
@@ -125,7 +180,9 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
             continue
 
         rel_path = str(source_file.relative_to(path))
+        is_ts_js = source_file.suffix in (".ts", ".js")
 
+        # Check universal patterns
         for category, config in DANGEROUS_PATTERNS.items():
             flags = re.IGNORECASE if category != "sql_injection" else 0
             for pattern in config["patterns"]:
@@ -141,6 +198,23 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
                             fix_suggestion=config["fix"],
                         )
                     )
+
+        # Check TS/JS-specific patterns
+        if is_ts_js:
+            for category, config in TS_DANGEROUS_PATTERNS.items():
+                for pattern in config["patterns"]:
+                    for match in re.finditer(pattern, content):
+                        line_num = content[:match.start()].count("\n") + 1
+                        issues.append(
+                            SecurityIssue(
+                                severity=config["severity"],
+                                category=category,
+                                file=rel_path,
+                                line=line_num,
+                                description=config["description"],
+                                fix_suggestion=config["fix"],
+                            )
+                        )
 
     # Calculate score
     if not source_files:

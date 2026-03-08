@@ -164,3 +164,55 @@ def test_architecture_check(tmp_path: Path):
     score2, has_tests2, _ = check_architecture(tmp_path)
     assert has_tests2 is True
     assert score2 > score
+
+
+def test_architecture_gradual_scoring(tmp_path: Path):
+    """Architecture scoring should be gradual, not binary."""
+    # Minimal server: no tests, no error handling, no README
+    py_file = tmp_path / "server.py"
+    py_file.write_text('def hello():\n    return "world"\n')
+    score_bare, _, _ = check_architecture(tmp_path)
+
+    # Add README (short)
+    (tmp_path / "README.md").write_text("# Server\nA simple server.")
+    score_readme, _, _ = check_architecture(tmp_path)
+    assert score_readme > score_bare
+
+    # Add 1 test file -> 1.0 for tests
+    test_dir = tmp_path / "tests"
+    test_dir.mkdir()
+    (test_dir / "test_a.py").write_text("def test_a(): pass")
+    score_1test, _, _ = check_architecture(tmp_path)
+    assert score_1test > score_readme
+
+    # Add 5+ test files -> 3.0 for tests
+    for i in range(5):
+        (test_dir / f"test_{i}.py").write_text(f"def test_{i}(): pass")
+    score_many_tests, _, _ = check_architecture(tmp_path)
+    assert score_many_tests > score_1test
+
+
+def test_security_ts_child_process(tmp_path: Path):
+    """TypeScript child_process.exec should be flagged."""
+    ts_file = tmp_path / "server.ts"
+    ts_file.write_text('import { exec } from "child_process";\nexecSync(`ls ${dir}`);\n')
+    score, issues = scan_security(tmp_path)
+    assert any(i.category == "child_process_injection" for i in issues)
+
+
+def test_security_ts_sql_template_literal(tmp_path: Path):
+    """Template literal interpolation in SQL queries should be flagged."""
+    ts_file = tmp_path / "db.ts"
+    ts_file.write_text('async function q(table: string) {\n  await pool.query(`SELECT * FROM ${table}`);\n}\n')
+    score, issues = scan_security(tmp_path)
+    assert any(i.category == "ts_sql_injection" for i in issues)
+
+
+def test_security_examples_excluded(tmp_path: Path):
+    """Files in examples/ directory should not be scanned."""
+    examples_dir = tmp_path / "examples"
+    examples_dir.mkdir()
+    py_file = examples_dir / "demo.py"
+    py_file.write_text('import os\nos.system("ls")\n')
+    score, issues = scan_security(tmp_path)
+    assert len(issues) == 0
