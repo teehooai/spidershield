@@ -14,6 +14,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from .issue_codes import get_issue_code
 from .models import Finding, ScanResult, Severity
 
 
@@ -27,11 +28,15 @@ def _get_nested(data: dict, *keys: str, default: Any = None) -> Any:
     return current
 
 
-def scan_config(agent_dir: Path | None = None) -> ScanResult:
+def scan_config(
+    agent_dir: Path | None = None,
+    ignore_patterns: set[str] | None = None,
+) -> ScanResult:
     """Scan agent config for security issues.
 
     Args:
         agent_dir: Path to agent config directory. Auto-detected if None.
+        ignore_patterns: Set of check_id or pattern names to skip.
 
     Returns:
         ScanResult with findings.
@@ -39,6 +44,7 @@ def scan_config(agent_dir: Path | None = None) -> ScanResult:
     if agent_dir is None:
         agent_dir = Path.home() / ".openclaw"
 
+    ignored = ignore_patterns or set()
     config_path = agent_dir / "openclaw.json"
     result = ScanResult(config_path=str(config_path))
 
@@ -87,7 +93,11 @@ def scan_config(agent_dir: Path | None = None) -> ScanResult:
 
     for checker in checkers:
         finding = checker(config, agent_dir)
-        if finding is not None:
+        if finding is not None and finding.check_id not in ignored:
+            # Attach issue code to description
+            code = get_issue_code(finding.check_id)
+            if code:
+                finding.description = f"[{code}] {finding.description}"
             result.findings.append(finding)
 
     return result

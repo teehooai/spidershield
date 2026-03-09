@@ -221,9 +221,10 @@ class TestSkillFindings:
         sarif = scan_result_to_sarif(result)
         assert len(sarif["runs"][0]["results"]) == 3
         rule_ids = {r["id"] for r in sarif["runs"][0]["tool"]["driver"]["rules"]}
-        assert "TS-SKILL-base64_pipe_bash" in rule_ids
-        assert "TS-SKILL-reverse_shell" in rule_ids
-        assert "TS-SKILL-credential_theft" in rule_ids
+        # Standardized issue codes: TS-E001, TS-E004, TS-E005
+        assert "TS-E001" in rule_ids  # base64_pipe_bash
+        assert "TS-E004" in rule_ids  # reverse_shell
+        assert "TS-E005" in rule_ids  # credential_theft
 
 
 class TestLocationInfo:
@@ -273,5 +274,5 @@ class TestMixedResults:
         assert len(rules) == 2
         assert len(results) == 2
         rule_ids = {r["id"] for r in rules}
-        assert "TS-no_auth" in rule_ids
-        assert "TS-SKILL-reverse_shell" in rule_ids
+        assert "TS-no_auth" in rule_ids  # no_auth has no issue code, fallback
+        assert "TS-E004" in rule_ids  # reverse_shell → TS-E004

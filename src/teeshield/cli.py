@@ -73,6 +73,16 @@ def harden(server_path: str, read_only: bool, truncate_limit: int, dry_run: bool
     default="text",
     help="Output format",
 )
+@click.option(
+    "--ignore", "ignore_codes", multiple=True,
+    help="Issue codes or pattern names to ignore (e.g. TS-W001, typosquat)",
+)
+@click.option(
+    "--policy", "policy",
+    type=click.Choice(["strict", "balanced", "permissive"]),
+    default=None,
+    help="Scan policy preset (strict=all, balanced=default, permissive=errors only)",
+)
 def agent_check(
     agent_dir: str | None,
     skills: bool,
@@ -80,6 +90,8 @@ def agent_check(
     fix: bool,
     dry_run: bool,
     fmt: str,
+    ignore_codes: tuple[str, ...],
+    policy: str | None,
 ):
     """Scan an AI agent installation for security issues.
 
@@ -90,14 +102,23 @@ def agent_check(
     """
     from pathlib import Path
 
+    from teeshield.agent.issue_codes import resolve_codes
     from teeshield.agent.scanner import scan_config
     from teeshield.agent.skill_scanner import scan_skills
 
+    # Resolve --ignore codes
+    ignored = resolve_codes(list(ignore_codes)) if ignore_codes else set()
+
+    # Apply policy preset (permissive ignores all warnings)
+    if policy == "permissive":
+        from teeshield.agent.issue_codes import SKILL_WARNING_CODES
+        ignored |= set(SKILL_WARNING_CODES.keys())
+
     agent_path = Path(agent_dir) if agent_dir else None
-    result = scan_config(agent_path)
+    result = scan_config(agent_path, ignore_patterns=ignored)
 
     if skills:
-        result.skill_findings.extend(scan_skills(agent_path))
+        result.skill_findings.extend(scan_skills(agent_path, ignore_patterns=ignored))
 
     if verify:
         from teeshield.agent.pinning import verify_all_skills
@@ -127,7 +148,7 @@ def agent_check(
         sarif = scan_result_to_sarif(result)
         console.print(sarif_to_json(sarif))
 
-    # Exit code: 2 if tampered, 1 if critical/malicious, 0 otherwise
+    # Exit codes based on policy
     from teeshield.agent.models import SkillVerdict, Severity
     if any(sf.verdict == SkillVerdict.TAMPERED for sf in result.skill_findings):
         raise SystemExit(2)
@@ -135,6 +156,12 @@ def agent_check(
         raise SystemExit(1)
     if any(sf.verdict == SkillVerdict.MALICIOUS for sf in result.skill_findings):
         raise SystemExit(1)
+    # Strict: exit 1 on any finding (HIGH, MEDIUM, LOW, suspicious)
+    if policy == "strict":
+        if result.findings or any(
+            sf.verdict == SkillVerdict.SUSPICIOUS for sf in result.skill_findings
+        ):
+            raise SystemExit(1)
 
 
 @main.group(name="agent-pin")

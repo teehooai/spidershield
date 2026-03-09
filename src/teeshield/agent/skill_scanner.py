@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from .issue_codes import get_issue_code
 from .models import SkillFinding, SkillVerdict
 
 
@@ -199,11 +200,15 @@ TYPOSQUAT_TARGETS = {
 }
 
 
-def scan_skills(agent_dir: Path | None = None) -> list[SkillFinding]:
+def scan_skills(
+    agent_dir: Path | None = None,
+    ignore_patterns: set[str] | None = None,
+) -> list[SkillFinding]:
     """Scan all installed skills for malicious patterns.
 
     Args:
         agent_dir: Path to agent config directory. Auto-detected if None.
+        ignore_patterns: Set of pattern names to skip (e.g. from --ignore).
 
     Returns:
         List of SkillFinding for each scanned skill.
@@ -227,16 +232,19 @@ def scan_skills(agent_dir: Path | None = None) -> list[SkillFinding]:
             if skill_path.is_dir():
                 skill_md = skill_path / "SKILL.md"
                 if skill_md.exists():
-                    finding = scan_single_skill(skill_md)
+                    finding = scan_single_skill(skill_md, ignore_patterns)
                     findings.append(finding)
             elif skill_path.name == "SKILL.md":
-                finding = scan_single_skill(skill_path)
+                finding = scan_single_skill(skill_path, ignore_patterns)
                 findings.append(finding)
 
     return findings
 
 
-def scan_single_skill(skill_path: Path) -> SkillFinding:
+def scan_single_skill(
+    skill_path: Path,
+    ignore_patterns: set[str] | None = None,
+) -> SkillFinding:
     """Scan a single SKILL.md file for malicious patterns."""
     skill_name = skill_path.parent.name if skill_path.parent.name != "skills" else skill_path.stem
 
@@ -250,13 +258,16 @@ def scan_single_skill(skill_path: Path) -> SkillFinding:
             issues=["Could not read skill file"],
         )
 
+    ignored = ignore_patterns or set()
+
     # Check against known malicious slugs
-    if skill_name.lower() in KNOWN_MALICIOUS_SLUGS:
+    if skill_name.lower() in KNOWN_MALICIOUS_SLUGS and "known_malicious_slug" not in ignored:
+        code = get_issue_code("known_malicious_slug") or "TS-E015"
         return SkillFinding(
             skill_name=skill_name,
             skill_path=str(skill_path),
             verdict=SkillVerdict.MALICIOUS,
-            issues=["Known malicious skill (ClawHavoc / VirusTotal database)"],
+            issues=[f"[{code}] Known malicious skill (ClawHavoc / VirusTotal database)"],
             matched_patterns=["known_malicious_slug"],
         )
 
@@ -267,8 +278,12 @@ def scan_single_skill(skill_path: Path) -> SkillFinding:
     has_suspicious = False
 
     for name, pattern, severity, description in MALICIOUS_PATTERNS:
+        if name in ignored:
+            continue
         if re.search(pattern, content, re.IGNORECASE | re.DOTALL):
-            issues.append(description)
+            code = get_issue_code(name)
+            prefix = f"[{code}] " if code else ""
+            issues.append(f"{prefix}{description}")
             matched.append(name)
             if severity == "malicious":
                 has_malicious = True
@@ -276,18 +291,22 @@ def scan_single_skill(skill_path: Path) -> SkillFinding:
                 has_suspicious = True
 
     # Check for typosquatting
-    typosquat = _check_typosquat(skill_name)
-    if typosquat:
-        issues.append(f"Name similar to popular skill '{typosquat}' (possible typosquat)")
-        matched.append("typosquat")
-        has_suspicious = True
+    if "typosquat" not in ignored:
+        typosquat = _check_typosquat(skill_name)
+        if typosquat:
+            code = get_issue_code("typosquat") or "TS-W007"
+            issues.append(f"[{code}] Name similar to popular skill '{typosquat}' (possible typosquat)")
+            matched.append("typosquat")
+            has_suspicious = True
 
     # Check for excessive permission requests
-    permission_issue = _check_excessive_permissions(content)
-    if permission_issue:
-        issues.append(permission_issue)
-        matched.append("excessive_permissions")
-        has_suspicious = True
+    if "excessive_permissions" not in ignored:
+        permission_issue = _check_excessive_permissions(content)
+        if permission_issue:
+            code = get_issue_code("excessive_permissions") or "TS-W008"
+            issues.append(f"[{code}] {permission_issue}")
+            matched.append("excessive_permissions")
+            has_suspicious = True
 
     # Determine verdict
     if has_malicious:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .issue_codes import get_issue_code
 from .models import ScanResult, Severity, SkillVerdict
 
 # SARIF schema URI
@@ -85,7 +86,7 @@ def scan_result_to_sarif(result: ScanResult) -> dict[str, Any]:
 
     # Config findings
     for finding in result.findings:
-        rule_id = f"TS-{finding.check_id}"
+        rule_id = get_issue_code(finding.check_id) or f"TS-{finding.check_id}"
         level = _SEVERITY_TO_LEVEL.get(finding.severity, "warning")
 
         if rule_id not in seen_rules:
@@ -120,7 +121,7 @@ def scan_result_to_sarif(result: ScanResult) -> dict[str, Any]:
             else:
                 pattern = sf.verdict.value
 
-            rule_id = f"TS-SKILL-{pattern}"
+            rule_id = get_issue_code(pattern) or f"TS-SKILL-{pattern}"
 
             if rule_id not in seen_rules:
                 rules.append(_make_rule(
