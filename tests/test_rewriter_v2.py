@@ -425,7 +425,10 @@ class TestSelfCheckRetry:
         from teeshield.rewriter.runner import _rewrite_llm
 
         tool = {"name": "list_tables", "description": "Lists tables."}
-        result = _rewrite_llm(tool, [tool], MockProvider(), min_score=9.8, max_retries=2, use_cache=False)
+        result = _rewrite_llm(
+            tool, [tool], MockProvider(),
+            min_score=9.8, max_retries=2, use_cache=False,
+        )
         assert call_count == 2  # Should have retried
         assert "e.g." in result
         assert "error" in result.lower() or "Raises" in result

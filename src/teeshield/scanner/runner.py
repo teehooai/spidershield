@@ -72,7 +72,7 @@ def run_scan_report(target: str, tools_json: str | None = None) -> ScanReport:
         hard_constraint = "no_tools"
     else:
         banned = {"AGPL-3.0", "AGPL-3.0-only", "AGPL-3.0-or-later", "SSPL-1.0", "BSL-1.1"}
-        if license_info and license_info.upper() in {l.upper() for l in banned}:
+        if license_info and license_info.upper() in {lic.upper() for lic in banned}:
             hard_constraint = "license_banned"
 
     # SpiderRating grade boundaries: A>=8.5, B>=7.0, C>=5.0, D>=3.0, F<3.0
