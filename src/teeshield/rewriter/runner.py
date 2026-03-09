@@ -165,10 +165,21 @@ def _rewrite_local(tool: dict, all_tools: list[dict]) -> str:
                     scenario = trigger
                     break
 
-    # 3. Compose final description
+    # 3. Add parameter hints from tool schema
+    param_hint = ""
+    params = _extract_params(tool)
+    if params:
+        required_params = [p for p in params if p.get("required")]
+        if required_params:
+            param_names = ", ".join(f"`{p['name']}`" for p in required_params[:3])
+            param_hint = f"Requires {param_names}."
+
+    # 4. Compose final description
     parts = [opening]
     if scenario:
         parts.append(scenario)
+    if param_hint:
+        parts.append(param_hint)
 
     return " ".join(parts)
 
@@ -197,21 +208,33 @@ def _rewrite_llm(
     model: str | None = None,
     min_score: float = 9.8,
     max_retries: int = 2,
+    use_cache: bool = True,
 ) -> str:
     """Rewrite a single tool description using LLM provider with self-check loop.
 
-    Flow: generate -> score -> if below min_score, diagnose missing criteria -> retry.
+    Flow: check cache -> generate -> score -> if below min_score, diagnose -> retry -> cache.
     Maximum `max_retries` attempts total (1 initial + retries).
     """
+    from .cache import get_cached, set_cached
     from .prompt import build_rewrite_prompt
     from .quality_gate import _quick_score, diagnose_missing
+
+    tool_name = tool["name"]
+    original_desc = tool.get("description", "")
+    model_id = model or getattr(provider, "model", "unknown")
+
+    # Check cache first
+    if use_cache:
+        cached = get_cached(tool_name, original_desc, model_id)
+        if cached is not None:
+            return cached
 
     params = _extract_params(tool)
     siblings = [{"name": t["name"], "description": t.get("description", "")} for t in all_tools]
 
     system_prompt, user_prompt = build_rewrite_prompt(
-        tool_name=tool["name"],
-        original_description=tool.get("description", ""),
+        tool_name=tool_name,
+        original_description=original_desc,
         parameters=params,
         sibling_tools=siblings,
     )
@@ -245,6 +268,10 @@ def _rewrite_llm(
         result = provider.complete(system_prompt, retry_prompt, max_tokens=500)
         score = _quick_score(result)
 
+    # Cache the result
+    if use_cache:
+        set_cached(tool_name, original_desc, model_id, result)
+
     return result
 
 
@@ -265,6 +292,8 @@ def run_rewrite(
     output_path: str | None = None,
     engine: str = "auto",
     provider_name: str | None = None,
+    tools_json: str | None = None,
+    use_cache: bool = True,
 ):
     """Rewrite tool descriptions in an MCP server."""
     path = Path(server_path)
@@ -273,9 +302,12 @@ def run_rewrite(
         raise SystemExit(1)
 
     # Extract tools
-    from teeshield.scanner.description_quality import _extract_tools
-
-    tools = _extract_tools(path)
+    if tools_json:
+        from teeshield.scanner.description_quality import load_tools_json
+        tools = load_tools_json(tools_json)
+    else:
+        from teeshield.scanner.description_quality import _extract_tools
+        tools = _extract_tools(path)
     if not tools:
         console.print("[yellow]No tools found in this server.[/yellow]")
         return
@@ -308,7 +340,7 @@ def run_rewrite(
 
         if use_llm and llm_provider:
             try:
-                rewritten = _rewrite_llm(tool, tools, llm_provider, model)
+                rewritten = _rewrite_llm(tool, tools, llm_provider, model, use_cache=use_cache)
             except Exception as e:
                 console.print(f"[yellow]LLM failed for {tool['name']}: {e}[/yellow]")
                 rewritten = _rewrite_local(tool, tools)

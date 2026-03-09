@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import re
+
 import yaml
 from rich.console import Console
 from rich.table import Table
@@ -32,6 +34,7 @@ def run_eval(
     scenarios_path: str | None = None,
     models: list[str] | None = None,
     use_llm: bool = False,
+    tools_json: str | None = None,
 ):
     """Run before/after evaluation of tool selection accuracy."""
     models = models or ["claude-sonnet-4-20250514"]
@@ -41,13 +44,15 @@ def run_eval(
     console.print(f"  Original: {original}")
     console.print(f"  Improved: {improved}")
     console.print(f"  Engine:   {engine}")
+    if tools_json:
+        console.print(f"  Tools:    {tools_json}")
     console.print(f"  Models:   {', '.join(models)}\n")
 
     # Load or generate scenarios
     if scenarios_path:
         scenarios = _load_scenarios(scenarios_path)
     else:
-        scenarios = _auto_generate_scenarios(Path(original))
+        scenarios = _auto_generate_scenarios(Path(original), tools_json=tools_json)
 
     if not scenarios:
         console.print("[yellow]No test scenarios found. Create a scenarios.yaml file.[/yellow]")
@@ -57,8 +62,12 @@ def run_eval(
     console.print(f"Running {len(scenarios)} scenarios × {len(models)} models...\n")
 
     # Run evaluations
-    original_results = _evaluate_server(Path(original), scenarios, models, use_llm)
-    improved_results = _evaluate_server(Path(improved), scenarios, models, use_llm)
+    original_results = _evaluate_server(
+        Path(original), scenarios, models, use_llm, tools_json=tools_json,
+    )
+    improved_results = _evaluate_server(
+        Path(improved), scenarios, models, use_llm, tools_json=tools_json,
+    )
 
     original_accuracy = (
         sum(1 for r in original_results if r.correct) / len(original_results)
@@ -91,9 +100,11 @@ def _load_scenarios(path: str) -> list[dict]:
     return data.get("scenarios", [])
 
 
-def _auto_generate_scenarios(server_path: Path) -> list[dict]:
+def _auto_generate_scenarios(
+    server_path: Path, tools_json: str | None = None,
+) -> list[dict]:
     """Auto-generate basic test scenarios from tool definitions."""
-    tools = _load_tools(server_path)
+    tools = _load_tools(server_path, tools_json=tools_json)
     scenarios = []
     for tool in tools:
         scenarios.append({
@@ -103,8 +114,15 @@ def _auto_generate_scenarios(server_path: Path) -> list[dict]:
     return scenarios
 
 
-def _load_tools(server_path: Path) -> list[dict]:
+def _load_tools(
+    server_path: Path, tools_json: str | None = None,
+) -> list[dict]:
     """Load tools from a directory (source extraction) or JSON file."""
+    # Explicit --tools-json overrides everything
+    if tools_json:
+        from teeshield.scanner.description_quality import load_tools_json
+        return load_tools_json(tools_json)
+
     if server_path.suffix == ".json":
         import json
         data = json.loads(server_path.read_text(encoding="utf-8"))
@@ -125,10 +143,10 @@ def _load_tools(server_path: Path) -> list[dict]:
 
 def _evaluate_server(
     server_path: Path, scenarios: list[dict], models: list[str],
-    use_llm: bool = False,
+    use_llm: bool = False, tools_json: str | None = None,
 ) -> list[EvalResult]:
     """Evaluate tool selection for a server against scenarios."""
-    tools = _load_tools(server_path)
+    tools = _load_tools(server_path, tools_json=tools_json)
     if not tools:
         return []
 
@@ -243,21 +261,94 @@ def _llm_select_with_retry(
 
 
 def _heuristic_match(intent: str, tools: list[dict]) -> str:
-    """Simple keyword-based tool matching as fallback."""
+    """Keyword-based tool matching with IDF weighting and stopword filtering."""
+    import math
+
     intent_lower = intent.lower()
-    best_score = 0
+    intent_words = set(intent_lower.split())
+
+    # Intent verb → tool name verb synonyms
+    verb_synonyms = {
+        "get": ["get", "retrieve", "fetch", "show", "read"],
+        "list": ["list", "show", "get"],
+        "show": ["show", "list", "get", "display"],
+        "run": ["run", "execute", "perform"],
+        "execute": ["execute", "run"],
+        "send": ["send", "post", "request", "submit"],
+        "check": ["check", "get", "list", "show", "verify"],
+        "apply": ["apply", "run", "execute"],
+        "search": ["search", "find", "query"],
+        "find": ["find", "search", "query"],
+        "create": ["create", "add", "new"],
+        "delete": ["delete", "remove", "drop"],
+        "update": ["update", "edit", "modify", "set"],
+    }
+
+    # Extract intent's leading verb
+    intent_verb = intent_lower.split()[0] if intent_lower.split() else ""
+    intent_verb_family = set(verb_synonyms.get(intent_verb, [intent_verb]))
+
+    # Stopwords: common words that don't help disambiguate tools
+    stopwords = {
+        "a", "an", "the", "to", "for", "of", "in", "on", "by", "with",
+        "from", "this", "that", "it", "is", "are", "was", "were", "be",
+        "and", "or", "not", "all", "my", "i", "you", "your", "we",
+        "can", "will", "do", "does", "has", "have", "had", "get",
+        "about", "into", "up", "out", "at", "as", "if", "so",
+    }
+
+    # Build document frequency for IDF weighting
+    doc_freq: dict[str, int] = {}
+    for tool in tools:
+        desc = tool.get("description", "").lower()
+        name = tool["name"].lower().replace("_", " ")
+        unique_words = set((name + " " + desc).split()) - stopwords
+        for w in unique_words:
+            if len(w) >= 2:
+                doc_freq[w] = doc_freq.get(w, 0) + 1
+
+    n_tools = len(tools) or 1
+    best_score = -1.0
     best_tool = tools[0]["name"] if tools else ""
 
     for tool in tools:
-        score = 0
-        name_words = tool["name"].lower().replace("_", " ").split()
-        desc_words = tool.get("description", "").lower().split()
+        score = 0.0
+        # Split name: snake_case and camelCase
+        raw_name = tool["name"].replace("_", " ")
+        # Split camelCase: "postgrestRequest" -> "postgrest Request"
+        raw_name = re.sub(r"([a-z])([A-Z])", r"\1 \2", raw_name)
+        name_words = raw_name.lower().split()
+        desc = tool.get("description", "").lower()
+        desc_words = desc.split()
+
+        # Exact name match (strongest signal)
+        name_joined = tool["name"].lower().replace("_", " ")
+        if name_joined in intent_lower:
+            score += 10.0
+
+        # Tool name's leading verb alignment with intent verb
+        tool_verb = name_words[0] if name_words else ""
+        if tool_verb in intent_verb_family:
+            score += 4.0
+
+        # Name word matches (high weight, IDF-adjusted)
         for word in name_words:
+            if word in stopwords or len(word) < 2:
+                continue
             if word in intent_lower:
-                score += 3
+                idf = math.log(n_tools / (doc_freq.get(word, 1) + 1)) + 1
+                score += 5.0 * idf
+
+        # Description word matches (lower weight, IDF-adjusted, skip stopwords)
+        seen = set()
         for word in desc_words:
-            if word in intent_lower:
-                score += 1
+            if word in stopwords or len(word) < 3 or word in seen:
+                continue
+            seen.add(word)
+            if word in intent_words:
+                idf = math.log(n_tools / (doc_freq.get(word, 1) + 1)) + 1
+                score += 1.0 * idf
+
         if score > best_score:
             best_score = score
             best_tool = tool["name"]

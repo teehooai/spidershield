@@ -11,20 +11,24 @@ src/teeshield/
   cli.py              -- Click CLI (scan, rewrite, harden, eval)
   models.py            -- Pydantic V2 models (ScanReport, SecurityIssue, etc.)
   server.py            -- MCP server mode (scan_mcp_server tool)
+  spiderrating.py      -- SpiderRating format conversion (metadata, grades)
   scanner/
     runner.py          -- Orchestrates 4-stage scan pipeline
     description_quality.py -- Tool description scoring (7 criteria)
     security_scan.py   -- Static security pattern matching
     architecture_check.py -- Code quality checks
     license_check.py   -- License detection
-  rewriter/runner.py   -- Template + LLM description rewriter
+  rewriter/
+    runner.py          -- Template + LLM description rewriter
+    cache.py           -- SHA-256 keyed LLM rewrite cache
+    providers.py       -- Anthropic / OpenAI / Gemini providers
   hardener/runner.py   -- Security fix suggestions
   evaluator/runner.py  -- Tool selection accuracy testing
 ```
 
 ## Hard Constraints (G0 -- never violate)
 
-1. **No false sense of security**: Never give A/A+ rating to a server with undetected critical issues.
+1. **No false sense of security**: Never give A rating to a server with undetected critical issues.
    If uncertain, score conservatively.
 2. **No destructive modifications**: `rewrite` and `harden` must never break working code.
    Always preserve original semantics.
@@ -44,7 +48,10 @@ TeeShield uses evidence-driven evolution (see docs/internal/001-audit-quality-ev
 - Security scanner: Minimize false positives. A false positive erodes trust more than a missed issue.
 - Description scorer: Score must correlate with actual LLM tool selection success.
 - Architecture checker: Gradual scoring preferred over binary pass/fail.
-- Overall score: weighted `security*0.4 + descriptions*0.35 + architecture*0.25`.
+- Overall score: SpiderRating formula `descriptions*0.35 + security_adjusted*0.35 + architecture*0.30`.
+- Architecture bonus: `min(3.0, arch_score * 0.3)` folds into security_adjusted.
+- Grade scale: F/D/C/B/A (thresholds: 3.0/5.0/7.0/8.5).
+- Hard constraints: critical→F, no_tools→F, license_banned→D cap.
 
 ### Scoring Calibration
 - A server with no quality signals in descriptions should score 0-2/10, not 3-4/10
@@ -98,4 +105,6 @@ Before submitting a PR to any external MCP repo, ALL 5 gates must pass:
 | Change scoring weights | scanner/description_quality.py (line ~90-108) |
 | Add tool extraction pattern | scanner/description_quality.py (_extract_tools) |
 | Change report output | scanner/runner.py (_print_table) |
+| SpiderRating conversion | spiderrating.py (convert, metadata scoring) |
+| LLM rewrite cache | rewriter/cache.py (~/.teeshield/rewrite-cache/) |
 | Add CLI command | cli.py |

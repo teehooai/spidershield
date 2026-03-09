@@ -30,14 +30,47 @@ _ACTION_VERBS = (
 )
 
 
+def load_tools_json(json_path: str) -> list[dict]:
+    """Load tools from a JSON file (MCP tools/list format or rewrite output).
+
+    Supports formats:
+    - MCP tools/list: {"tools": [{"name": "...", "description": "...", ...}]}
+    - Rewrite output: [{"name": "...", "original": "...", "rewritten": "..."}]
+    - Plain list: [{"name": "...", "description": "..."}]
+    """
+    import json
+
+    data = json.loads(Path(json_path).read_text(encoding="utf-8"))
+
+    # MCP tools/list response: {"tools": [...]}
+    if isinstance(data, dict) and "tools" in data:
+        return [
+            {"name": t["name"], "description": t.get("description", "")}
+            for t in data["tools"]
+        ]
+
+    # List format
+    if isinstance(data, list):
+        tools = []
+        for t in data:
+            if not isinstance(t, dict) or "name" not in t:
+                continue
+            desc = t.get("description") or t.get("rewritten") or t.get("original", "")
+            tools.append({"name": t["name"], "description": desc})
+        return tools
+
+    return []
+
+
 def score_descriptions(
     path: Path,
+    tools_json: str | None = None,
 ) -> tuple[float, list[ToolDescriptionScore], list[str]]:
     """Score the quality of tool descriptions in an MCP server.
 
     Returns (overall_score, per_tool_scores, tool_names).
     """
-    tools = _extract_tools(path)
+    tools = load_tools_json(tools_json) if tools_json else _extract_tools(path)
     if not tools:
         return 5.0, [], []
 

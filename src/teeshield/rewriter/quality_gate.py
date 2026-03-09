@@ -43,8 +43,13 @@ def quality_gate(
         score_fn: Scoring function (original, rewritten) -> (float, float).
                   If None, uses the built-in _quick_score.
     """
+    orig_score = _quick_score(original)
+
     if original == rewritten:
-        return GateResult(passed=False, description=original, rejection_reason="identical")
+        return GateResult(
+            passed=False, description=original,
+            rejection_reason="identical", score=orig_score,
+        )
 
     # --- Grammar checks ---
 
@@ -52,14 +57,14 @@ def quality_gate(
     if rewritten and not rewritten[0].isupper():
         return GateResult(
             passed=False, description=original,
-            rejection_reason="starts with lowercase",
+            rejection_reason="starts with lowercase", score=orig_score,
         )
 
     # Must end with punctuation
     if rewritten and rewritten[-1] not in ".!?)\"'":
         return GateResult(
             passed=False, description=original,
-            rejection_reason="does not end with punctuation",
+            rejection_reason="does not end with punctuation", score=orig_score,
         )
 
     # No repeated words at start (e.g. "Retrieve Retrieve")
@@ -67,7 +72,7 @@ def quality_gate(
     if len(words) >= 2 and words[0].lower() == words[1].lower():
         return GateResult(
             passed=False, description=original,
-            rejection_reason=f"repeated word: '{words[0]}'",
+            rejection_reason=f"repeated word: '{words[0]}'", score=orig_score,
         )
 
     # --- Tautology checks ---
@@ -76,7 +81,7 @@ def quality_gate(
         if re.search(pat, rewritten, re.IGNORECASE):
             return GateResult(
                 passed=False, description=original,
-                rejection_reason=f"tautological pattern: {pat}",
+                rejection_reason=f"tautological pattern: {pat}", score=orig_score,
             )
 
     # Short "Use when" triggers are tautological
@@ -90,6 +95,7 @@ def quality_gate(
             return GateResult(
                 passed=False, description=original,
                 rejection_reason=f"tautological trigger: '{trigger_match.group(1)}'",
+                score=orig_score,
             )
 
         # Check if trigger just restates the tool name
@@ -100,6 +106,7 @@ def quality_gate(
                 return GateResult(
                     passed=False, description=original,
                     rejection_reason="trigger restates tool name",
+                    score=orig_score,
                 )
 
     # --- Semantic preservation ---
@@ -120,26 +127,27 @@ def quality_gate(
             return GateResult(
                 passed=False, description=original,
                 rejection_reason=f"lost key nouns (preserved {preservation_ratio:.0%})",
+                score=orig_score,
             )
 
     # --- Length bounds ---
     if len(rewritten) > 1500:
         return GateResult(
             passed=False, description=original,
-            rejection_reason="too long (>1500 chars)",
+            rejection_reason="too long (>1500 chars)", score=orig_score,
         )
 
     # --- Score improvement ---
     if score_fn:
         orig_score, new_score = score_fn(original, rewritten)
     else:
-        orig_score = _quick_score(original)
         new_score = _quick_score(rewritten)
 
     if new_score <= orig_score:
         return GateResult(
             passed=False, description=original,
             rejection_reason=f"no score improvement ({orig_score} -> {new_score})",
+            score=orig_score,
         )
 
     return GateResult(passed=True, description=rewritten, score=new_score)

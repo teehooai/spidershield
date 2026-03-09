@@ -13,7 +13,7 @@ from pathlib import Path
 DEFAULT_DB_DIR = Path.home() / ".teeshield"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "dataset.db"
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -110,6 +110,41 @@ CREATE INDEX IF NOT EXISTS idx_descriptions_tool ON tool_descriptions(tool_name)
 CREATE INDEX IF NOT EXISTS idx_fixes_category ON hardener_fixes(category);
 CREATE INDEX IF NOT EXISTS idx_prs_repo ON pull_requests(repo);
 CREATE INDEX IF NOT EXISTS idx_prs_status ON pull_requests(status);
+
+CREATE TABLE IF NOT EXISTS agent_scans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    target TEXT NOT NULL,
+    scanned_at TEXT NOT NULL DEFAULT (datetime('now')),
+    security_score REAL NOT NULL DEFAULT 0.0,
+    config_findings INTEGER NOT NULL DEFAULT 0,
+    critical_count INTEGER NOT NULL DEFAULT 0,
+    high_count INTEGER NOT NULL DEFAULT 0,
+    skill_count INTEGER NOT NULL DEFAULT 0,
+    malicious_skills INTEGER NOT NULL DEFAULT 0,
+    suspicious_skills INTEGER NOT NULL DEFAULT 0,
+    safe_skills INTEGER NOT NULL DEFAULT 0,
+    audit_coverage_pct REAL NOT NULL DEFAULT 0.0,
+    policy TEXT
+);
+
+CREATE TABLE IF NOT EXISTS agent_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_scan_id INTEGER NOT NULL REFERENCES agent_scans(id) ON DELETE CASCADE,
+    finding_type TEXT NOT NULL,
+    check_id TEXT,
+    issue_code TEXT,
+    severity TEXT,
+    verdict TEXT,
+    title TEXT NOT NULL,
+    description TEXT,
+    skill_name TEXT,
+    matched_patterns TEXT,
+    auto_fixable INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_scans_target ON agent_scans(target);
+CREATE INDEX IF NOT EXISTS idx_agent_findings_type ON agent_findings(finding_type);
+CREATE INDEX IF NOT EXISTS idx_agent_findings_severity ON agent_findings(severity);
 """
 
 
@@ -218,6 +253,19 @@ def get_stats(db_path: Path | None = None) -> dict:
             "FROM pull_requests"
         ).fetchone()[0]
 
+        # Agent-check stats
+        agent_scans_total = conn.execute(
+            "SELECT COUNT(*) FROM agent_scans"
+        ).fetchone()[0]
+        agent_findings_total = conn.execute(
+            "SELECT COUNT(*) FROM agent_findings"
+        ).fetchone()[0]
+        agent_by_type = conn.execute(
+            "SELECT finding_type, COUNT(*) as cnt "
+            "FROM agent_findings GROUP BY finding_type "
+            "ORDER BY cnt DESC"
+        ).fetchall()
+
         return {
             "db_exists": True,
             "db_path": str(path),
@@ -229,6 +277,9 @@ def get_stats(db_path: Path | None = None) -> dict:
             "total_fixes": fixes,
             "total_prs": pr_total,
             "pr_tools_changed": pr_tools,
+            "total_agent_scans": agent_scans_total,
+            "total_agent_findings": agent_findings_total,
+            "agent_finding_types": {r[0]: r[1] for r in agent_by_type},
             "top_issue_categories": [
                 {"category": r[0], "count": r[1]} for r in top_cats
             ],

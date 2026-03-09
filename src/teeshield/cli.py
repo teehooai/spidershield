@@ -15,17 +15,21 @@ def main():
 @main.command()
 @click.argument("target")
 @click.option("--output", "-o", default=None, help="Output report path (JSON/SARIF)")
-@click.option("--format", "fmt", type=click.Choice(["table", "json", "sarif"]), default="table")
-def scan(target: str, output: str | None, fmt: str):
+@click.option("--format", "fmt", type=click.Choice(["table", "json", "sarif", "spiderrating"]), default="table")
+@click.option("--tools-json", default=None, help="Pre-extracted tools JSON (MCP tools/list format)")
+def scan(target: str, output: str | None, fmt: str, tools_json: str | None):
     """Scan an MCP server for security issues and description quality.
 
     TARGET can be a GitHub repo URL or a local directory path.
+
+    Use --format spiderrating to output in SpiderRating-compatible JSON
+    (description 35% + security 35% + metadata 30%, F/D/C/B/A grades).
     """
     if fmt == "sarif":
         from teeshield.agent.sarif import sarif_to_json, scan_report_to_sarif
         from teeshield.scanner.runner import run_scan_report
 
-        report = run_scan_report(target)
+        report = run_scan_report(target, tools_json=tools_json)
         sarif = scan_report_to_sarif(report)
         sarif_json = sarif_to_json(sarif)
         if output:
@@ -35,10 +39,34 @@ def scan(target: str, output: str | None, fmt: str):
             Console(stderr=True).print(f"[green]SARIF report written to {output}[/green]")
         else:
             console.print(sarif_json)
+    elif fmt == "spiderrating":
+        import json
+        from pathlib import Path as P
+
+        from teeshield.scanner.runner import run_scan_report
+
+        report = run_scan_report(target, tools_json=tools_json)
+        report_dict = json.loads(report.model_dump_json())
+
+        from teeshield.spiderrating import convert, parse_owner_repo
+
+        try:
+            owner, repo = parse_owner_repo(target)
+        except ValueError:
+            owner, repo = "local", P(target).name
+
+        result = convert(report_dict, owner, repo)
+        json_str = json.dumps(result, indent=2)
+
+        if output:
+            P(output).write_text(json_str, encoding="utf-8")
+            Console(stderr=True).print(f"[green]SpiderRating JSON written to {output}[/green]")
+        else:
+            console.print(json_str)
     else:
         from teeshield.scanner.runner import run_scan
 
-        run_scan(target, output_path=output, output_format=fmt)
+        run_scan(target, output_path=output, output_format=fmt, tools_json=tools_json)
 
 
 @main.command()
@@ -55,6 +83,8 @@ def scan(target: str, output: str | None, fmt: str):
     type=click.Choice(["claude", "openai", "gemini"]),
     default=None, help="LLM provider (auto-detected from env vars if not set)",
 )
+@click.option("--tools-json", default=None, help="Pre-extracted tools JSON (MCP tools/list format)")
+@click.option("--no-cache", "no_cache", is_flag=True, help="Skip LLM rewrite cache")
 def rewrite(
     server_path: str,
     model: str | None,
@@ -62,6 +92,8 @@ def rewrite(
     output: str | None,
     engine: str,
     provider_name: str | None,
+    tools_json: str | None,
+    no_cache: bool,
 ):
     """Rewrite tool descriptions for LLM-optimized selection.
 
@@ -80,6 +112,8 @@ def rewrite(
         output_path=output,
         engine=engine,
         provider_name=provider_name,
+        tools_json=tools_json,
+        use_cache=not no_cache,
     )
 
 
@@ -128,9 +162,9 @@ def harden(
 @click.option("--dry-run", is_flag=True, help="Preview fixes without applying")
 @click.option(
     "--format", "fmt",
-    type=click.Choice(["text", "json", "sarif"]),
+    type=click.Choice(["text", "json", "sarif", "spiderrating"]),
     default="text",
-    help="Output format",
+    help="Output format (spiderrating outputs SpiderRating-compatible JSON)",
 )
 @click.option(
     "--ignore", "ignore_codes", multiple=True,
@@ -202,6 +236,10 @@ def agent_check(
     result.audit_framework.permission_checked = True  # config scanner always checks
     result.audit_framework.risk_checked = True  # verdict/severity always computed
 
+    # Record to dataset (best-effort)
+    from teeshield.dataset.collector import record_agent_scan
+    record_agent_scan(result, policy=policy)
+
     if fix or dry_run:
         from teeshield.agent.fixer import fix_findings
         from teeshield.agent.report import print_fix_report
@@ -224,6 +262,36 @@ def agent_check(
         from teeshield.agent.sarif import sarif_to_json, scan_result_to_sarif
         sarif = scan_result_to_sarif(result)
         click.echo(sarif_to_json(sarif))
+    elif fmt == "spiderrating":
+        import dataclasses
+        import json
+
+        from teeshield.spiderrating import convert_skill
+
+        result_dict = dataclasses.asdict(result)
+
+        # Read SKILL.md content for description scoring
+        skill_content = ""
+        effective_path = Path(agent_dir) if agent_dir else Path.home() / ".openclaw"
+        for skill_dir in [effective_path / "skills", effective_path / "workspace" / "skills"]:
+            if skill_dir.exists():
+                for p in skill_dir.rglob("SKILL.md"):
+                    try:
+                        skill_content = p.read_text(encoding="utf-8")
+                    except OSError:
+                        pass
+                    break
+
+        # Try to extract owner/repo from agent_dir or first skill path
+        owner, repo = "local", effective_path.name
+        if result.skill_findings:
+            first_path = result.skill_findings[0].skill_path
+            skill_name = result.skill_findings[0].skill_name
+        else:
+            skill_name = repo
+
+        sr = convert_skill(result_dict, skill_name, owner, repo, skill_content=skill_content)
+        click.echo(json.dumps(sr, indent=2))
 
     # Exit codes based on policy
     from teeshield.agent.models import Severity, SkillVerdict
@@ -374,6 +442,11 @@ def dataset_stats():
     console.print(f"  Security issues: {stats['total_issues']}")
     console.print(f"  Tool descriptions: {stats['total_descriptions']}")
     console.print(f"  Hardener fixes: {stats['total_fixes']}")
+    if stats.get("total_agent_scans"):
+        console.print(
+            f"  Agent scans: {stats['total_agent_scans']}"
+            f" ({stats['total_agent_findings']} findings)"
+        )
     if stats.get("total_prs"):
         console.print(
             f"  Pull requests: {stats['total_prs']}"
@@ -444,15 +517,25 @@ def dataset_export(output_path: str, fmt: str):
             dict(r)
             for r in conn.execute("SELECT * FROM pull_requests").fetchall()
         ]
+        agent_scans_data = [
+            dict(r)
+            for r in conn.execute("SELECT * FROM agent_scans").fetchall()
+        ]
+        agent_findings_data = [
+            dict(r)
+            for r in conn.execute("SELECT * FROM agent_findings").fetchall()
+        ]
 
     if fmt == "json":
         data = {
-            "version": 2,
+            "version": 3,
             "scans": scans,
             "security_issues": issues,
             "tool_descriptions": descriptions,
             "hardener_fixes": fixes,
             "pull_requests": prs,
+            "agent_scans": agent_scans_data,
+            "agent_findings": agent_findings_data,
         }
         Path(output_path).write_text(
             json.dumps(data, indent=2, default=str), encoding="utf-8",
@@ -593,9 +676,10 @@ def dataset_pr_list(status: str | None):
 @click.option("--scenarios", "-s", default=None, help="Path to test scenarios YAML")
 @click.option("--models", "-m", multiple=True, default=["claude-sonnet-4-20250514"])
 @click.option("--llm", is_flag=True, help="Use LLM for evaluation (requires ANTHROPIC_API_KEY)")
+@click.option("--tools-json", default=None, help="Pre-extracted tools JSON (overrides source extraction)")
 def evaluate(
     original: str, improved: str, scenarios: str | None,
-    models: tuple[str, ...], llm: bool,
+    models: tuple[str, ...], llm: bool, tools_json: str | None,
 ):
     """Compare tool selection accuracy before and after improvements.
 
@@ -604,4 +688,7 @@ def evaluate(
     """
     from teeshield.evaluator.runner import run_eval
 
-    run_eval(original, improved, scenarios_path=scenarios, models=list(models), use_llm=llm)
+    run_eval(
+        original, improved, scenarios_path=scenarios,
+        models=list(models), use_llm=llm, tools_json=tools_json,
+    )

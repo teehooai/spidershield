@@ -25,6 +25,7 @@ class AnthropicProvider:
         response = self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
+            temperature=0,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -44,6 +45,7 @@ class OpenAIProvider:
         response = self.client.chat.completions.create(
             model=self.model,
             max_tokens=max_tokens,
+            temperature=0,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -67,7 +69,10 @@ class GeminiProvider:
 
         response = self.model.generate_content(
             f"{system}\n\n---\n\n{user}",
-            generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=max_tokens,
+                temperature=0,
+            ),
         )
         return (response.text or "").strip()
 

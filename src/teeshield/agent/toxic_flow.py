@@ -325,16 +325,29 @@ class _FlowVisitor(ast.NodeVisitor):
 
     # Also catch os.environ["KEY"] (subscript access, not a call)
     def visit_Subscript(self, node: ast.Subscript) -> None:  # noqa: N802
-        if isinstance(node.value, ast.Attribute):
-            if (
-                isinstance(node.value.value, ast.Name)
-                and node.value.value.id == "os"
-                and node.value.attr == "environ"
-            ):
-                label = "os.environ[]"
-                if label not in self.sources:
-                    self.sources.append(label)
+        if self._is_os_environ(node.value):
+            label = "os.environ[]"
+            if label not in self.sources:
+                self.sources.append(label)
         self.generic_visit(node)
+
+    # Catch bare os.environ references: dict(os.environ), os.environ.items(), etc.
+    def visit_Attribute(self, node: ast.Attribute) -> None:  # noqa: N802
+        if self._is_os_environ(node):
+            label = "os.environ"
+            if label not in self.sources:
+                self.sources.append(label)
+        self.generic_visit(node)
+
+    @staticmethod
+    def _is_os_environ(node: ast.AST) -> bool:
+        """Check if node is os.environ attribute access."""
+        return (
+            isinstance(node, ast.Attribute)
+            and node.attr == "environ"
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "os"
+        )
 
 
 def detect_toxic_flows_ast(source: str | Path) -> list[ToxicFlow]:

@@ -45,30 +45,49 @@ def resolve_target(target: str) -> Path:
     raise SystemExit(1)
 
 
-def run_scan_report(target: str) -> ScanReport:
+def run_scan_report(target: str, tools_json: str | None = None) -> ScanReport:
     """Run a full scan and return the report object."""
     path = resolve_target(target)
 
     license_info, license_ok = check_license(path)
     security_score, security_issues = scan_security(path)
-    desc_score, tool_scores, tool_names = score_descriptions(path)
+    desc_score, tool_scores, tool_names = score_descriptions(path, tools_json=tools_json)
     arch_score, has_tests, has_error_handling = check_architecture(path)
 
-    overall = (security_score * 0.4 + desc_score * 0.35 + arch_score * 0.25)
+    # SpiderRating formula: description 35% + security 35% + architecture 30%
+    # Architecture replaces metadata locally (metadata requires GitHub API).
+    # Architecture bonus (0-3) also folds into security for richer signal.
+    arch_bonus = min(3.0, arch_score * 0.3)
+    security_adjusted = min(10.0, security_score + arch_bonus)
+    overall = (desc_score * 0.35 + security_adjusted * 0.35 + arch_score * 0.30)
     improvement_potential = 10.0 - overall
 
     from teeshield.models import Rating
 
+    # Hard constraints (checked before grade thresholds)
+    hard_constraint = None
     if any(i.severity == "critical" for i in security_issues):
+        hard_constraint = "critical_vulnerability"
+    elif len(tool_names) == 0:
+        hard_constraint = "no_tools"
+    else:
+        banned = {"AGPL-3.0", "AGPL-3.0-only", "AGPL-3.0-or-later", "SSPL-1.0", "BSL-1.1"}
+        if license_info and license_info.upper() in {l.upper() for l in banned}:
+            hard_constraint = "license_banned"
+
+    # SpiderRating grade boundaries: A>=8.5, B>=7.0, C>=5.0, D>=3.0, F<3.0
+    if hard_constraint in ("critical_vulnerability", "no_tools"):
         rating = Rating.F
-    elif overall >= 9.0:
-        rating = Rating.A_PLUS
-    elif overall >= 8.0:
+    elif hard_constraint == "license_banned":
+        rating = Rating.D if overall >= 3.0 else Rating.F
+    elif overall >= 8.5:
         rating = Rating.A
-    elif overall >= 6.0:
+    elif overall >= 7.0:
         rating = Rating.B
-    elif overall >= 4.0:
+    elif overall >= 5.0:
         rating = Rating.C
+    elif overall >= 3.0:
+        rating = Rating.D
     else:
         rating = Rating.F
 
@@ -130,7 +149,10 @@ def run_scan_report(target: str) -> ScanReport:
     )
 
 
-def run_scan(target: str, output_path: str | None = None, output_format: str = "table"):
+def run_scan(
+    target: str, output_path: str | None = None, output_format: str = "table",
+    tools_json: str | None = None,
+):
     """Run a full scan on an MCP server."""
     # Use stderr for progress when outputting JSON to stdout
     log = stderr_console if (output_format == "json" and not output_path) else console
@@ -141,7 +163,7 @@ def run_scan(target: str, output_path: str | None = None, output_format: str = "
     log.print("[dim]Stage 3/4: Description quality...[/dim]")
     log.print("[dim]Stage 4/4: Architecture check...[/dim]")
 
-    report = run_scan_report(target)
+    report = run_scan_report(target, tools_json=tools_json)
 
     # Record to local dataset (best-effort, never fails the scan)
     from teeshield.dataset.collector import record_scan

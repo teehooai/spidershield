@@ -8,13 +8,13 @@ from pydantic import BaseModel, Field
 
 
 class Rating(StrEnum):
-    """Certification rating levels."""
+    """SpiderRating grade levels (F/D/C/B/A)."""
 
-    F = "F"  # Flagged --known security issues
-    C = "C"  # Community --unaudited
-    B = "B"  # Basic --passed automated scan
-    A = "A"  # Audited --full audit including manual review
-    A_PLUS = "A+"  # Enterprise Certified --continuous monitoring
+    F = "F"  # Flagged -- critical issues or hard constraint violations
+    D = "D"  # Deficient -- significant issues, below minimum quality
+    C = "C"  # Caution -- usable but has notable issues
+    B = "B"  # Basic -- passed automated scan, minor issues
+    A = "A"  # Approved -- high quality across all dimensions
 
 
 class SecurityIssue(BaseModel):

@@ -266,8 +266,8 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     if not source_files:
         return 5.0, issues
 
-    severity_weights = {"critical": 3.0, "high": 2.0, "medium": 1.0, "low": 0.5, "info": 0.1}
-    total_penalty = sum(severity_weights.get(i.severity, 0.5) for i in issues)
+    severity_weights = {"critical": 3.0, "high": 2.0, "medium": 1.0, "low": 0.25, "info": 0.1}
+    total_penalty = sum(severity_weights.get(i.severity, 0.25) for i in issues)
     score = max(0.0, 10.0 - total_penalty)
 
     return round(score, 1), issues

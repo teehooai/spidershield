@@ -10,6 +10,7 @@ from click.testing import CliRunner
 from teeshield.cli import main
 from teeshield.dataset.collector import (
     get_prs,
+    record_agent_scan,
     record_hardener_fix,
     record_pr,
     record_pr_tool_change,
@@ -39,7 +40,7 @@ class TestDatabase:
             ver = conn.execute(
                 "SELECT version FROM schema_version"
             ).fetchone()[0]
-            assert ver == 2
+            assert ver == 3
 
     def test_get_stats_no_db(self, tmp_path: Path) -> None:
         stats = get_stats(tmp_path / "nonexistent.db")
@@ -229,9 +230,11 @@ class TestDatasetCLI:
         assert out.exists()
 
         data = json.loads(out.read_text(encoding="utf-8"))
-        assert data["version"] == 2
+        assert data["version"] == 3
         assert len(data["scans"]) == 1
         assert "pull_requests" in data
+        assert "agent_scans" in data
+        assert "agent_findings" in data
 
     def test_dataset_export_no_data(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setattr(
@@ -359,3 +362,135 @@ class TestPRTracking:
         result = runner.invoke(main, ["dataset", "pr-list"])
         assert result.exit_code == 0
         assert "Tracked Pull Requests" in result.output
+
+
+class TestAgentCheckDataset:
+    def _make_scan_result(self):
+        """Create a minimal ScanResult for testing."""
+        from teeshield.agent.models import (
+            AuditFramework,
+            Finding,
+            ScanResult,
+            Severity,
+            SkillFinding,
+            SkillVerdict,
+        )
+
+        return ScanResult(
+            config_path="/tmp/test-agent",
+            version="1.0",
+            findings=[
+                Finding(
+                    check_id="gateway.no_auth",
+                    title="No authentication",
+                    severity=Severity.CRITICAL,
+                    description="[TS-C002] No auth configured",
+                    fix_hint="Set a token",
+                    auto_fixable=True,
+                ),
+                Finding(
+                    check_id="sandbox.disabled",
+                    title="Sandbox disabled",
+                    severity=Severity.HIGH,
+                    description="[TS-C005] Sandbox is off",
+                    fix_hint="Enable sandbox",
+                    auto_fixable=True,
+                ),
+            ],
+            skill_findings=[
+                SkillFinding(
+                    skill_name="safe-skill",
+                    skill_path="/skills/safe-skill",
+                    verdict=SkillVerdict.SAFE,
+                    issues=[],
+                    matched_patterns=[],
+                ),
+                SkillFinding(
+                    skill_name="evil-skill",
+                    skill_path="/skills/evil-skill",
+                    verdict=SkillVerdict.MALICIOUS,
+                    issues=["[TS-E001] Base64 pipe to bash"],
+                    matched_patterns=["base64_pipe_bash"],
+                ),
+                SkillFinding(
+                    skill_name="sus-skill",
+                    skill_path="/skills/sus-skill",
+                    verdict=SkillVerdict.SUSPICIOUS,
+                    issues=["[TS-W003] External binary download"],
+                    matched_patterns=["external_binary"],
+                ),
+            ],
+            audit_framework=AuditFramework(
+                source_checked=True,
+                code_checked=True,
+                permission_checked=True,
+                risk_checked=True,
+            ),
+        )
+
+    def test_record_agent_scan(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        result = self._make_scan_result()
+        scan_id = record_agent_scan(result, policy="strict", db_path=db_path)
+        assert scan_id is not None
+        assert scan_id > 0
+
+    def test_record_agent_scan_data(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        result = self._make_scan_result()
+        scan_id = record_agent_scan(result, policy="balanced", db_path=db_path)
+
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_scans WHERE id = ?", (scan_id,)
+            ).fetchone()
+            assert row["target"] == "/tmp/test-agent"
+            assert row["config_findings"] == 2
+            assert row["critical_count"] == 1
+            assert row["high_count"] == 1
+            assert row["skill_count"] == 3
+            assert row["malicious_skills"] == 1
+            assert row["suspicious_skills"] == 1
+            assert row["safe_skills"] == 1
+            assert row["audit_coverage_pct"] == 100.0
+            assert row["policy"] == "balanced"
+
+    def test_record_agent_findings(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        result = self._make_scan_result()
+        scan_id = record_agent_scan(result, db_path=db_path)
+
+        with get_connection(db_path) as conn:
+            findings = conn.execute(
+                "SELECT * FROM agent_findings WHERE agent_scan_id = ?",
+                (scan_id,),
+            ).fetchall()
+            # 2 config + 3 skill = 5 findings
+            assert len(findings) == 5
+
+            config_findings = [f for f in findings if f["finding_type"] == "config"]
+            assert len(config_findings) == 2
+            assert any(f["check_id"] == "gateway.no_auth" for f in config_findings)
+
+            skill_findings = [f for f in findings if f["finding_type"] == "skill"]
+            assert len(skill_findings) == 3
+            mal = [f for f in skill_findings if f["verdict"] == "malicious"]
+            assert len(mal) == 1
+            assert mal[0]["skill_name"] == "evil-skill"
+            assert "base64_pipe_bash" in mal[0]["matched_patterns"]
+
+    def test_agent_stats(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        result = self._make_scan_result()
+        record_agent_scan(result, db_path=db_path)
+
+        stats = get_stats(db_path)
+        assert stats["total_agent_scans"] == 1
+        assert stats["total_agent_findings"] == 5
+        assert "config" in stats["agent_finding_types"]
+        assert "skill" in stats["agent_finding_types"]
+
+    def test_record_agent_scan_never_raises(self, tmp_path: Path) -> None:
+        """Collector should silently handle errors."""
+        result = record_agent_scan("not a result", db_path=tmp_path / "test.db")
+        assert result is None

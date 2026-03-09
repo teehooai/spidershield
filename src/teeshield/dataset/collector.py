@@ -248,6 +248,80 @@ def record_pr_tool_change(
         return cur.lastrowid
 
 
+@_safe_record
+def record_agent_scan(result, policy: str | None = None, db_path: Path | None = None) -> int | None:
+    """Record an agent-check scan result to the dataset. Returns agent_scan_id or None."""
+    from teeshield.agent.models import SkillVerdict
+
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        skill_findings = result.skill_findings
+        malicious = sum(1 for sf in skill_findings if sf.verdict == SkillVerdict.MALICIOUS)
+        suspicious = sum(1 for sf in skill_findings if sf.verdict == SkillVerdict.SUSPICIOUS)
+        safe = sum(1 for sf in skill_findings if sf.verdict == SkillVerdict.SAFE)
+
+        cur = conn.execute(
+            "INSERT INTO agent_scans "
+            "(target, security_score, config_findings, critical_count, "
+            "high_count, skill_count, malicious_skills, suspicious_skills, "
+            "safe_skills, audit_coverage_pct, policy) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                result.config_path,
+                result.score,
+                len(result.findings),
+                result.critical_count,
+                result.high_count,
+                len(skill_findings),
+                malicious,
+                suspicious,
+                safe,
+                result.audit_framework.coverage_pct,
+                policy,
+            ),
+        )
+        agent_scan_id = cur.lastrowid
+
+        # Record config findings
+        for f in result.findings:
+            conn.execute(
+                "INSERT INTO agent_findings "
+                "(agent_scan_id, finding_type, check_id, severity, "
+                "title, description, auto_fixable) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    agent_scan_id,
+                    "config",
+                    f.check_id,
+                    f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+                    f.title,
+                    f.description,
+                    int(f.auto_fixable),
+                ),
+            )
+
+        # Record skill findings
+        for sf in skill_findings:
+            conn.execute(
+                "INSERT INTO agent_findings "
+                "(agent_scan_id, finding_type, verdict, "
+                "title, description, skill_name, matched_patterns) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    agent_scan_id,
+                    "skill",
+                    sf.verdict.value if hasattr(sf.verdict, "value") else str(sf.verdict),
+                    sf.skill_name,
+                    "; ".join(sf.issues) if sf.issues else "",
+                    sf.skill_name,
+                    ",".join(sf.matched_patterns) if sf.matched_patterns else "",
+                ),
+            )
+
+        return agent_scan_id
+
+
 def get_prs(
     status: str | None = None,
     db_path: Path | None = None,

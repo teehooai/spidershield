@@ -38,31 +38,34 @@ class TestRunScanReport:
         assert any(i.severity == "critical" for i in report.security_issues)
 
     def test_score_weights(self, tmp_path: Path) -> None:
-        """Overall score = security*0.4 + desc*0.35 + arch*0.25."""
+        """Overall score = desc*0.35 + security_adjusted*0.35 + arch*0.30."""
         report = run_scan_report(str(tmp_path))
+        arch_bonus = min(3.0, report.architecture_score * 0.3)
+        security_adjusted = min(10.0, report.security_score + arch_bonus)
         expected = (
-            report.security_score * 0.4
-            + report.description_score * 0.35
-            + report.architecture_score * 0.25
+            report.description_score * 0.35
+            + security_adjusted * 0.35
+            + report.architecture_score * 0.30
         )
         assert abs(report.overall_score - round(expected, 1)) <= 0.1
 
     def test_rating_thresholds(self, tmp_path: Path) -> None:
-        """Verify rating assignment is consistent with overall score."""
+        """Verify rating assignment is consistent with SpiderRating grade boundaries."""
         report = run_scan_report(str(tmp_path))
         has_critical = any(
             i.severity == "critical" for i in report.security_issues
         )
-        if has_critical:
+        no_tools = report.tool_count == 0
+        if has_critical or no_tools:
             assert report.rating == Rating.F
-        elif report.overall_score >= 9.0:
-            assert report.rating == Rating.A_PLUS
-        elif report.overall_score >= 8.0:
+        elif report.overall_score >= 8.5:
             assert report.rating == Rating.A
-        elif report.overall_score >= 6.0:
+        elif report.overall_score >= 7.0:
             assert report.rating == Rating.B
-        elif report.overall_score >= 4.0:
+        elif report.overall_score >= 5.0:
             assert report.rating == Rating.C
+        elif report.overall_score >= 3.0:
+            assert report.rating == Rating.D
         else:
             assert report.rating == Rating.F
 
