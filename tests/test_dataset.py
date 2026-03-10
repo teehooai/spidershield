@@ -40,7 +40,7 @@ class TestDatabase:
             ver = conn.execute(
                 "SELECT version FROM schema_version"
             ).fetchone()[0]
-            assert ver == 3
+            assert ver == 4
 
     def test_get_stats_no_db(self, tmp_path: Path) -> None:
         stats = get_stats(tmp_path / "nonexistent.db")
@@ -362,6 +362,149 @@ class TestPRTracking:
         result = runner.invoke(main, ["dataset", "pr-list"])
         assert result.exit_code == 0
         assert "Tracked Pull Requests" in result.output
+
+
+class TestSchemaV4:
+    """Tests for schema v4 data flywheel features."""
+
+    def _make_report(self, target="/tmp/test-server", overall=6.3):
+        from spidershield.models import Rating, ScanReport, SecurityIssue
+
+        rating = (
+            Rating.A if overall >= 8.5
+            else Rating.B if overall >= 7.0
+            else Rating.C if overall >= 5.0
+            else Rating.D if overall >= 3.0
+            else Rating.F
+        )
+        return ScanReport(
+            target=target,
+            tool_count=3,
+            security_score=7.5,
+            description_score=6.0,
+            architecture_score=5.0,
+            overall_score=overall,
+            rating=rating,
+            license="MIT",
+            license_ok=True,
+            has_tests=True,
+            has_error_handling=False,
+            security_issues=[
+                SecurityIssue(
+                    severity="high",
+                    category="sql_injection",
+                    file="server.py",
+                    line=42,
+                    description="f-string in SQL",
+                    fix_suggestion="Use params",
+                ),
+            ],
+        )
+
+    def test_record_scan_with_scoring_version(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        report = self._make_report()
+        scan_id = record_scan(
+            report, db_path=db_path,
+            scoring_version="v2",
+            scanner_version="0.3.0",
+            pattern_set_hash="abc123",
+            scan_duration_ms=150,
+            source_type="ci",
+        )
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT scoring_version, scanner_version, "
+                "pattern_set_hash, scan_duration_ms, source_type "
+                "FROM scans WHERE id = ?", (scan_id,)
+            ).fetchone()
+            assert row["scoring_version"] == "v2"
+            assert row["scanner_version"] == "0.3.0"
+            assert row["pattern_set_hash"] == "abc123"
+            assert row["scan_duration_ms"] == 150
+            assert row["source_type"] == "ci"
+
+    def test_security_issue_pattern_name(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        report = self._make_report()
+        scan_id = record_scan(report, db_path=db_path)
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT pattern_name FROM security_issues "
+                "WHERE scan_id = ?", (scan_id,)
+            ).fetchone()
+            assert row["pattern_name"] == "sql_injection"
+
+    def test_server_timeline_auto_insert(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        report = self._make_report()
+        scan_id = record_scan(report, db_path=db_path, scoring_version="v2")
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM server_timeline WHERE scan_id = ?",
+                (scan_id,)
+            ).fetchone()
+            assert row is not None
+            assert row["target"] == "/tmp/test-server"
+            assert row["overall_score"] == 6.3
+            assert row["scoring_version"] == "v2"
+            # First scan: no deltas
+            assert row["delta_overall"] is None
+            assert row["prev_scan_id"] is None
+
+    def test_server_timeline_delta(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        r1 = self._make_report(overall=5.0)
+        id1 = record_scan(r1, db_path=db_path)
+        r2 = self._make_report(overall=7.0)
+        id2 = record_scan(r2, db_path=db_path)
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT delta_overall, prev_scan_id "
+                "FROM server_timeline WHERE scan_id = ?", (id2,)
+            ).fetchone()
+            assert row["delta_overall"] == 2.0
+            assert row["prev_scan_id"] == id1
+
+    def test_scoring_calibration_auto_insert(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        report = self._make_report(overall=8.0)
+        scan_id = record_scan(report, db_path=db_path, scoring_version="v2")
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM scoring_calibration WHERE scan_id = ?",
+                (scan_id,)
+            ).fetchone()
+            assert row is not None
+            assert row["predicted_overall"] == 8.0
+            assert row["predicted_rating"] == "B"
+            assert row["scoring_version"] == "v2"
+
+    def test_v4_tables_exist(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        init_db(db_path)
+        with get_connection(db_path) as conn:
+            tables = {
+                row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            for expected in [
+                "scoring_versions", "server_timeline",
+                "pattern_effectiveness", "scoring_calibration",
+                "benchmarks", "pr_scan_links",
+            ]:
+                assert expected in tables, f"Missing table: {expected}"
+
+    def test_flywheel_stats(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        report = self._make_report()
+        record_scan(report, db_path=db_path, scoring_version="v2")
+        stats = get_stats(db_path)
+        assert "timeline_entries" in stats
+        assert stats["timeline_entries"] == 1
+        assert "calibration_total" in stats
+        assert stats["calibration_total"] == 1
 
 
 class TestAgentCheckDataset:
