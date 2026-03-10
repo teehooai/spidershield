@@ -6,7 +6,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from teeshield.cli import main
+from spidershield.cli import main
 
 
 class TestScanCommand:
@@ -14,7 +14,7 @@ class TestScanCommand:
         runner = CliRunner()
         result = runner.invoke(main, ["scan", str(tmp_path)])
         assert result.exit_code == 0
-        assert "TeeShield" in result.output or "Scanning" in result.output
+        assert "SpiderShield" in result.output or "Scanning" in result.output
 
     def test_scan_json_format(self, tmp_path: Path) -> None:
         runner = CliRunner()

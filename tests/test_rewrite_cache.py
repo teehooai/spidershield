@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from teeshield.rewriter.cache import cache_key, clear_cache, get_cached, set_cached
+from spidershield.rewriter.cache import cache_key, clear_cache, get_cached, set_cached
 
 
 class TestCacheKey:
@@ -26,18 +26,18 @@ class TestCacheKey:
 
 class TestCacheOps:
     def test_roundtrip(self, tmp_path: Path):
-        with patch("teeshield.rewriter.cache.CACHE_DIR", tmp_path):
+        with patch("spidershield.rewriter.cache.CACHE_DIR", tmp_path):
             set_cached("tool", "desc", "model", "rewritten text")
             result = get_cached("tool", "desc", "model")
             assert result == "rewritten text"
 
     def test_miss(self, tmp_path: Path):
-        with patch("teeshield.rewriter.cache.CACHE_DIR", tmp_path):
+        with patch("spidershield.rewriter.cache.CACHE_DIR", tmp_path):
             result = get_cached("nonexistent", "desc", "model")
             assert result is None
 
     def test_clear(self, tmp_path: Path):
-        with patch("teeshield.rewriter.cache.CACHE_DIR", tmp_path):
+        with patch("spidershield.rewriter.cache.CACHE_DIR", tmp_path):
             set_cached("t1", "d", "m", "r1")
             set_cached("t2", "d", "m", "r2")
             count = clear_cache()

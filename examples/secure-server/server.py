@@ -1,4 +1,4 @@
-"""Example secure MCP server -- for TeeShield demo purposes."""
+"""Example secure MCP server -- for SpiderShield demo purposes."""
 
 from pathlib import Path
 

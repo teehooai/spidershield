@@ -1,6 +1,6 @@
 """Tests for the template rewriter -- verifying anti-tautology guarantees."""
 
-from teeshield.rewriter.runner import _quality_gate, _rewrite_local
+from spidershield.rewriter.runner import _quality_gate, _rewrite_local
 
 
 def test_rewrite_adds_verb():

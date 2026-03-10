@@ -1,17 +1,17 @@
-"""Convert TeeShield scan output to SpiderRating format.
+"""Convert SpiderShield scan output to SpiderRating format.
 
 Usage:
     # Scan + convert in one step
-    python scripts/teeshield_to_spiderrating.py owner/repo
+    python scripts/spidershield_to_spiderrating.py owner/repo
 
-    # Convert existing TeeShield JSON
-    python scripts/teeshield_to_spiderrating.py --from-json scan_report.json
+    # Convert existing SpiderShield JSON
+    python scripts/spidershield_to_spiderrating.py --from-json scan_report.json
 
     # Output to SpiderRating data directory
-    python scripts/teeshield_to_spiderrating.py owner/repo \
+    python scripts/spidershield_to_spiderrating.py owner/repo \
         --out-dir ../spidershield/web/public/data/servers/
 
-Thin wrapper around teeshield.spiderrating -- all logic lives in the library.
+Thin wrapper around spidershield.spiderrating -- all logic lives in the library.
 """
 
 from __future__ import annotations
@@ -21,22 +21,22 @@ import json
 import sys
 from pathlib import Path
 
-# Add project root to path so we can import teeshield
+# Add project root to path so we can import spidershield
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from teeshield.spiderrating import convert, parse_owner_repo
+from spidershield.spiderrating import convert, parse_owner_repo
 
 
-def run_teeshield_scan(target: str) -> dict:
-    """Run teeshield scan and return the JSON report."""
-    from teeshield.scanner.runner import run_scan_report
+def run_spidershield_scan(target: str) -> dict:
+    """Run spidershield scan and return the JSON report."""
+    from spidershield.scanner.runner import run_scan_report
     report = run_scan_report(target)
     return json.loads(report.model_dump_json())
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert TeeShield scan to SpiderRating format"
+        description="Convert SpiderShield scan to SpiderRating format"
     )
     parser.add_argument(
         "target",
@@ -45,7 +45,7 @@ def main():
     )
     parser.add_argument(
         "--from-json",
-        help="Path to existing TeeShield JSON report",
+        help="Path to existing SpiderShield JSON report",
     )
     parser.add_argument(
         "--out-dir",
@@ -65,7 +65,7 @@ def main():
     if not args.target and not args.from_json:
         parser.error("Provide either a target repo or --from-json")
 
-    # Get the TeeShield report
+    # Get the SpiderShield report
     if args.from_json:
         report = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
         owner = args.owner or "unknown"
@@ -80,7 +80,7 @@ def main():
     else:
         owner, repo = parse_owner_repo(args.target)
         print(f"Scanning {owner}/{repo}...", file=sys.stderr)
-        report = run_teeshield_scan(args.target)
+        report = run_spidershield_scan(args.target)
 
     # Convert
     result = convert(report, owner, repo)

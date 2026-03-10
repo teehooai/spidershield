@@ -1,0 +1,73 @@
+# SpiderShield Policy Preset: balanced
+# Default for development environments.
+# Blocks known-dangerous patterns, escalates borderline cases.
+
+policies:
+  # --- Sensitive file access ---
+  - name: block-sensitive-files
+    match:
+      tool: "read_file|get_file_text|file_read"
+      args_pattern:
+        path: "\\.(env|key|pem|p12|credentials|secret|token)$"
+    action: deny
+    reason: "Access to sensitive file type blocked"
+    suggestion: "Avoid reading credential/key files directly"
+
+  - name: block-ssh-keys
+    match:
+      tool: "read_file|get_file_text|file_read"
+      args_pattern:
+        path: "\\.ssh/"
+    action: deny
+    reason: "SSH key access blocked"
+    suggestion: "SSH keys should not be read by agent tools"
+
+  - name: block-etc-sensitive
+    match:
+      tool: "read_file|get_file_text|file_read"
+      args_pattern:
+        path: "^/etc/(passwd|shadow|sudoers)"
+    action: deny
+    reason: "System file access blocked"
+    suggestion: "Use application-level files instead of system files"
+
+  # --- Dangerous shell commands ---
+  - name: block-destructive-shell
+    match:
+      tool: "run_command|execute_command|shell_exec|run_terminal_cmd"
+      args_pattern:
+        command: "(rm\\s+-rf|chmod\\s+777|mkfs|dd\\s+if=|:(){ :|\\&};:)"
+    action: deny
+    reason: "Destructive shell command blocked"
+    suggestion: "Use targeted file operations instead of destructive commands"
+
+  - name: block-curl-pipe-bash
+    match:
+      tool: "run_command|execute_command|shell_exec|run_terminal_cmd"
+      args_pattern:
+        command: "curl.*\\|.*sh|wget.*\\|.*sh|curl.*\\|.*bash"
+    action: deny
+    reason: "Remote code execution pattern blocked"
+    suggestion: "Download scripts to a file first, review, then execute"
+
+  - name: block-reverse-shell
+    match:
+      tool: "run_command|execute_command|shell_exec|run_terminal_cmd"
+      args_pattern:
+        command: "(/dev/tcp/|nc\\s+-e|ncat\\s+-e|bash\\s+-i)"
+    action: deny
+    reason: "Reverse shell pattern blocked"
+    suggestion: "Network connections should use approved APIs"
+
+  # --- Database safety ---
+  - name: escalate-db-destructive
+    match:
+      tool: "query|execute_sql|run_query|postgres_query"
+      args_pattern:
+        query: "(?i)(DROP|TRUNCATE|DELETE\\s+FROM\\s+(?!.*WHERE))"
+    action: escalate
+    reason: "Destructive database operation requires approval"
+    suggestion: "Add WHERE clause or use a safer operation"
+
+  # --- Default allow ---
+  # No catch-all deny: unmatched calls are allowed.

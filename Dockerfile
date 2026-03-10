@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -u 1000 teeshield
+RUN useradd -m -u 1000 spidershield
 
 WORKDIR /app
 
@@ -11,8 +11,8 @@ COPY src/ src/
 
 RUN pip install --no-cache-dir .
 
-USER teeshield
+USER spidershield
 
-HEALTHCHECK --interval=30s --timeout=5s CMD teeshield --version || exit 1
+HEALTHCHECK --interval=30s --timeout=5s CMD spidershield --version || exit 1
 
-CMD ["teeshield-server"]
+CMD ["spidershield-server"]

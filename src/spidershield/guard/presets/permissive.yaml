@@ -1,0 +1,34 @@
+# SpiderShield Policy Preset: permissive
+# For trusted environments / debugging.
+# Only blocks known-malicious patterns. Everything else is allowed + logged.
+
+policies:
+  # --- Only block clearly malicious patterns ---
+  - name: block-reverse-shell
+    match:
+      tool: "run_command|execute_command|shell_exec|run_terminal_cmd"
+      args_pattern:
+        command: "(/dev/tcp/|nc\\s+-e|ncat\\s+-e|bash\\s+-i)"
+    action: deny
+    reason: "Reverse shell pattern blocked"
+    suggestion: "This pattern is never allowed"
+
+  - name: block-base64-exec
+    match:
+      tool: "run_command|execute_command|shell_exec|run_terminal_cmd"
+      args_pattern:
+        command: "base64.*\\|.*(eval|exec|sh|bash|python)"
+    action: deny
+    reason: "Encoded execution pattern blocked"
+    suggestion: "Decode and review commands before executing"
+
+  - name: block-credential-exfil
+    match:
+      tool: "run_command|execute_command|shell_exec|run_terminal_cmd"
+      args_pattern:
+        command: "curl.*(/etc/passwd|/etc/shadow|\\.ssh/|credentials)"
+    action: deny
+    reason: "Credential exfiltration pattern blocked"
+    suggestion: "Credentials should never be sent over network"
+
+  # Everything else: ALLOW (default)

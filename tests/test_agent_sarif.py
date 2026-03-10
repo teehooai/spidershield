@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 
-from teeshield.agent.models import (
+from spidershield.agent.models import (
     Finding,
     ScanResult,
     Severity,
     SkillFinding,
     SkillVerdict,
 )
-from teeshield.agent.sarif import (
+from spidershield.agent.sarif import (
     SARIF_VERSION,
     sarif_to_json,
     scan_result_to_sarif,
@@ -42,7 +42,7 @@ class TestSarifStructure:
         result = _make_result()
         sarif = scan_result_to_sarif(result)
         driver = sarif["runs"][0]["tool"]["driver"]
-        assert driver["name"] == "TeeShield"
+        assert driver["name"] == "SpiderShield"
         assert "informationUri" in driver
 
     def test_empty_result_no_findings(self) -> None:

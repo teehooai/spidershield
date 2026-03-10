@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from teeshield.spiderrating import (
+from spidershield.spiderrating import (
     compute_grade,
     compute_metadata_score,
     convert,

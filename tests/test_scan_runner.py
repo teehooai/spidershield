@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teeshield.models import Rating
-from teeshield.scanner.runner import run_scan_report
+from spidershield.models import Rating
+from spidershield.scanner.runner import run_scan_report
 
 
 class TestRunScanReport:

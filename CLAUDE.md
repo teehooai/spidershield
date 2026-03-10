@@ -1,13 +1,13 @@
-# TeeShield -- MCP Server Security Linter
+# SpiderShield -- MCP Server Security Linter
 
 ## Project Overview
-TeeShield is a static analysis tool for MCP (Model Context Protocol) servers.
+SpiderShield is a static analysis tool for MCP (Model Context Protocol) servers.
 It scans tool descriptions, security patterns, architecture quality, and licensing.
 Think "npm audit for MCP tools".
 
 ## Architecture
 ```
-src/teeshield/
+src/spidershield/
   cli.py              -- Click CLI (scan, rewrite, harden, eval)
   models.py            -- Pydantic V2 models (ScanReport, SecurityIssue, etc.)
   server.py            -- MCP server mode (scan_mcp_server tool)
@@ -18,6 +18,15 @@ src/teeshield/
     security_scan.py   -- Static security pattern matching
     architecture_check.py -- Code quality checks
     license_check.py   -- License detection
+  agent/
+    scanner.py         -- Agent config security audit
+    skill_scanner.py   -- Skill malware/injection pattern matching (20 patterns)
+    toxic_flow.py      -- Dangerous capability combination detection (keyword + AST)
+    pinning.py         -- SHA-256 content pinning for rug-pull detection
+    allowlist.py       -- Approved-only skills enforcement
+    sarif.py           -- SARIF output for agent findings
+    models.py          -- Finding, SkillFinding, ScanResult, AuditFramework
+    issue_codes.py     -- TS-E/W/C/P code registry
   rewriter/
     runner.py          -- Template + LLM description rewriter
     cache.py           -- SHA-256 keyed LLM rewrite cache
@@ -37,11 +46,11 @@ src/teeshield/
 
 ## Evolution Mode Protocol
 
-TeeShield uses evidence-driven evolution (see docs/internal/001-audit-quality-evolution-2026-03-08.md).
+SpiderShield uses evidence-driven evolution (see docs/internal/001-audit-quality-evolution-2026-03-08.md).
 
 ### Per-Change Cycle
 1. **Evidence first**: Before changing a scanner, document the false positive/negative that motivates the change
-2. **Measure before/after**: Run `teeshield scan` on test-targets/ before and after changes
+2. **Measure before/after**: Run `spidershield scan` on test-targets/ before and after changes
 3. **Update observation doc**: Record what changed and why in docs/internal/
 
 ### Scanner Quality Rules
@@ -105,6 +114,10 @@ Before submitting a PR to any external MCP repo, ALL 5 gates must pass:
 | Change scoring weights | scanner/description_quality.py (line ~90-108) |
 | Add tool extraction pattern | scanner/description_quality.py (_extract_tools) |
 | Change report output | scanner/runner.py (_print_table) |
-| SpiderRating conversion | spiderrating.py (convert, metadata scoring) |
-| LLM rewrite cache | rewriter/cache.py (~/.teeshield/rewrite-cache/) |
+| SpiderRating conversion (MCP) | spiderrating.py (convert, metadata scoring) |
+| SpiderRating conversion (Skill) | spiderrating.py (convert_skill, score_skill_description) |
+| Agent security patterns | agent/skill_scanner.py (MALICIOUS_PATTERNS list) |
+| Agent config checks | agent/scanner.py |
+| Toxic flow detection | agent/toxic_flow.py (keyword + AST) |
+| LLM rewrite cache | rewriter/cache.py (~/.spidershield/rewrite-cache/) |
 | Add CLI command | cli.py |

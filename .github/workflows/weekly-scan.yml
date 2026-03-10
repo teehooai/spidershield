@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install TeeShield
+      - name: Install SpiderShield
         run: pip install -e .
 
       - name: Scan official MCP servers
@@ -31,7 +31,7 @@ jobs:
           for target in "${TARGETS[@]}"; do
             name=$(basename "$target")
             echo "Scanning: $name"
-            teeshield scan "$target" --format json -o "scan-results/${name}.json" || true
+            spidershield scan "$target" --format json -o "scan-results/${name}.json" || true
           done
 
       - name: Generate summary

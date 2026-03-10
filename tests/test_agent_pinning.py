@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from teeshield.agent.models import SkillVerdict
-from teeshield.agent.pinning import (
+from spidershield.agent.models import SkillVerdict
+from spidershield.agent.pinning import (
     _hash_content,
     list_pins,
     pin_all_skills,

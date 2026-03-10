@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from teeshield.agent.allowlist import check_allowlist, load_allowlist
-from teeshield.agent.models import AuditFramework, SkillVerdict
+from spidershield.agent.allowlist import check_allowlist, load_allowlist
+from spidershield.agent.models import AuditFramework, SkillVerdict
 
 
 class TestLoadAllowlist:
@@ -95,10 +95,10 @@ class TestAuditFramework:
         assert af.coverage_pct == 75
 
     def test_scan_result_has_audit_framework(self) -> None:
-        from teeshield.agent.models import ScanResult
+        from spidershield.agent.models import ScanResult
         result = ScanResult(config_path="test")
         assert result.audit_framework.coverage == 0
 
     def test_issue_code_exists(self) -> None:
-        from teeshield.agent.issue_codes import get_issue_code
+        from spidershield.agent.issue_codes import get_issue_code
         assert get_issue_code("not_in_allowlist") == "TS-W011"

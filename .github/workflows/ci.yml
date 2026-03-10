@@ -41,7 +41,7 @@ jobs:
         run: pip install -e ".[dev]" pytest-cov
 
       - name: Run tests with coverage
-        run: pytest tests/ -v --cov=teeshield --cov-report=term-missing --cov-fail-under=60
+        run: pytest tests/ -v --cov=spidershield --cov-report=term-missing --cov-fail-under=60
 
       - name: Verify CLI
-        run: teeshield --version
+        run: spidershield --version

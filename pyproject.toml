@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "teeshield"
-version = "0.2.2"
-description = "Security linter for MCP servers and AI agents -- 46 checks for vulnerabilities, malicious patterns, and description quality"
+name = "spidershield"
+version = "0.3.0"
+description = "Security scanner and runtime guard for MCP servers -- static analysis, policy enforcement, DLP, prompt injection detection"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "TeeShield" },
+    { name = "SpiderShield" },
 ]
-keywords = ["mcp", "ai-agent", "security", "tool-firewall", "skill-rating", "static-analysis", "malware-detection", "sarif"]
+keywords = ["mcp", "ai-agent", "security", "tool-firewall", "runtime-security", "dlp", "prompt-injection", "guardrails", "static-analysis", "sarif"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -43,8 +43,8 @@ ai = [
 ]
 
 [project.scripts]
-teeshield = "teeshield.cli:main"
-teeshield-server = "teeshield.server:run"
+spidershield = "spidershield.cli:main"
+spidershield-server = "spidershield.server:run"
 
 [tool.ruff]
 target-version = "py311"

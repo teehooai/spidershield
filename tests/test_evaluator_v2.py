@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from teeshield.evaluator.runner import _fuzzy_match_tool, _llm_select_with_retry
+from spidershield.evaluator.runner import _fuzzy_match_tool, _llm_select_with_retry
 
 
 def _make_mock_client(responses: list[str]):

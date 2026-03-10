@@ -1,4 +1,4 @@
-"""Example insecure MCP server -- for TeeShield demo purposes."""
+"""Example insecure MCP server -- for SpiderShield demo purposes."""
 
 from mcp.server import Server
 

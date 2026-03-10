@@ -11,8 +11,8 @@ These tests validate that:
 
 import pytest
 
-from teeshield.rewriter.runner import _quality_gate, _rewrite_local
-from teeshield.scanner.description_quality import score_descriptions
+from spidershield.rewriter.runner import _quality_gate, _rewrite_local
+from spidershield.scanner.description_quality import score_descriptions
 
 # ---------------------------------------------------------------------------
 # Golden descriptions: domain-diverse, all should score 10.0/10
@@ -156,7 +156,7 @@ class TestGoldenGatePreservation:
         gated = _quality_gate(tool["description"], rewritten)
         # The gate should either keep the golden original or produce
         # something equally good -- never worse
-        from teeshield.rewriter.runner import _quick_score
+        from spidershield.rewriter.runner import _quick_score
         original_score = _quick_score(tool["description"])
         gated_score = _quick_score(gated)
         assert gated_score >= original_score, (
@@ -171,7 +171,7 @@ class TestGoldenAsReference:
 
     def test_mediocre_scores_lower(self):
         """A mediocre description must score strictly lower than golden."""
-        from teeshield.rewriter.runner import _quick_score
+        from spidershield.rewriter.runner import _quick_score
         golden_score = _quick_score(GOLDEN_TOOLS[0]["description"])
         mediocre_score = _quick_score("Lists tables.")
         assert mediocre_score < golden_score, (
@@ -181,7 +181,7 @@ class TestGoldenAsReference:
 
     def test_empty_scores_much_lower(self):
         """An empty description must score far below golden."""
-        from teeshield.rewriter.runner import _quick_score
+        from spidershield.rewriter.runner import _quick_score
         golden_score = _quick_score(GOLDEN_TOOLS[0]["description"])
         empty_score = _quick_score("")
         assert empty_score < golden_score * 0.3, (
@@ -193,12 +193,12 @@ class TestAntiGaming:
     """Verify the scorer resists keyword-stuffing attacks."""
 
     def _golden_score(self):
-        from teeshield.rewriter.runner import _quick_score
+        from spidershield.rewriter.runner import _quick_score
         return _quick_score(GOLDEN_TOOLS[0]["description"])
 
     def test_keyword_stuffed_scores_low(self):
         """Pure keyword stuffing must score far below golden."""
-        from teeshield.rewriter.runner import _quick_score
+        from spidershield.rewriter.runner import _quick_score
         stuffed = (
             "List e.g. example. Use when error fail invalid. "
             "Accepts param: requires: expects: `x` such as like for instance."
@@ -207,7 +207,7 @@ class TestAntiGaming:
 
     def test_repeated_keywords_scores_low(self):
         """Repeated trigger words must score far below golden."""
-        from teeshield.rewriter.runner import _quick_score
+        from spidershield.rewriter.runner import _quick_score
         repeated = (
             "Read read read. Use when use when use when. "
             "e.g. e.g. e.g. error error error. Accepts: accepts: requires:."
@@ -216,7 +216,7 @@ class TestAntiGaming:
 
     def test_empty_semantic_scores_below_golden(self):
         """Vague descriptions with triggers must score below golden."""
-        from teeshield.rewriter.runner import _quick_score
+        from spidershield.rewriter.runner import _quick_score
         vague = (
             'Get it. Use when you want it. Takes `thing` '
             '(e.g. "stuff"). Fails if invalid input error.'
@@ -229,7 +229,7 @@ class TestDiscriminationGradient:
 
     def test_score_gradient(self):
         """Scores must decrease monotonically across quality tiers."""
-        from teeshield.rewriter.runner import _quick_score
+        from spidershield.rewriter.runner import _quick_score
 
         tiers = {
             "golden": GOLDEN_TOOLS[0]["description"],

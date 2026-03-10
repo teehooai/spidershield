@@ -1,12 +1,12 @@
-# TeeShield -- Security Scanner for MCP Servers & AI Agents
+# SpiderShield -- Security Scanner for MCP Servers & AI Agents
 
-![TeeShield Verified](https://img.shields.io/badge/MCP-TeeShield_Verified-green)
-[![PyPI](https://img.shields.io/pypi/v/teeshield)](https://pypi.org/project/teeshield/)
+![SpiderShield Verified](https://img.shields.io/badge/MCP-SpiderShield_Verified-green)
+[![PyPI](https://img.shields.io/pypi/v/spidershield)](https://pypi.org/project/spidershield/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **`npm audit` for MCP tools.** Static analysis linter that scans MCP server tool definitions and AI agent configurations for security vulnerabilities, malicious patterns, and description quality issues. 46 standardized checks across 4 categories.
 
-## Why TeeShield?
+## Why SpiderShield?
 
 MCP is the open protocol connecting AI agents to tools. But the ecosystem has two problems:
 
@@ -14,17 +14,17 @@ MCP is the open protocol connecting AI agents to tools. But the ecosystem has tw
 
 **Problem 2: Agent installations are insecure.** Skills can contain reverse shells, credential theft, and prompt injection. Configurations ship with no auth, disabled sandboxes, and open DM policies.
 
-TeeShield is a dual-module static analysis linter:
+SpiderShield is a dual-module static analysis linter:
 
 | Module | Command | What it does |
 |--------|---------|-------------|
-| **MCP Server Scanner** | `teeshield scan` | Score tool descriptions, detect code vulnerabilities, rate overall quality (F/C/B/A/A+) |
-| **Agent Security Checker** | `teeshield agent-check` | 18 config checks, 15 malicious pattern detections, toxic flow analysis, rug pull detection |
+| **MCP Server Scanner** | `spidershield scan` | Score tool descriptions, detect code vulnerabilities, rate overall quality (F/C/B/A/A+) |
+| **Agent Security Checker** | `spidershield agent-check` | 18 config checks, 15 malicious pattern detections, toxic flow analysis, rug pull detection |
 
 ## Install
 
 ```bash
-pip install teeshield
+pip install spidershield
 ```
 
 Requires Python 3.11+.
@@ -32,13 +32,13 @@ Requires Python 3.11+.
 ## Quickstart
 
 ```bash
-teeshield scan ./your-mcp-server
+spidershield scan ./your-mcp-server
 ```
 
 Example output:
 
 ```
-            TeeShield Scan Report
+            SpiderShield Scan Report
    modelcontextprotocol/servers/filesystem
 +---------------------------------------------+
 | Metric                | Value     |   Score |
@@ -57,14 +57,14 @@ Example output:
 
 ## Rewrite tool descriptions
 
-TeeShield can automatically rewrite tool descriptions to be action-oriented, with scenario triggers, parameter examples, and error guidance.
+SpiderShield can automatically rewrite tool descriptions to be action-oriented, with scenario triggers, parameter examples, and error guidance.
 
 ```bash
 # Preview changes (no files modified)
-teeshield rewrite ./your-mcp-server --dry-run
+spidershield rewrite ./your-mcp-server --dry-run
 
 # Apply changes to source files
-teeshield rewrite ./your-mcp-server
+spidershield rewrite ./your-mcp-server
 ```
 
 Before (score 2.9):
@@ -98,14 +98,14 @@ Full report: [MCP-SECURITY-REPORT.md](MCP-SECURITY-REPORT.md) | Raw data: [CURAT
 The repo includes example MCP servers for instant demo:
 
 ```bash
-git clone https://github.com/teehooai/teeshield
-cd teeshield
+git clone https://github.com/teehooai/spidershield
+cd spidershield
 
-teeshield scan examples/insecure-server   # Rating: C (4.8/10)
-teeshield scan examples/secure-server     # Rating: B (7.2/10)
+spidershield scan examples/insecure-server   # Rating: C (4.8/10)
+spidershield scan examples/secure-server     # Rating: B (7.2/10)
 ```
 
-## What TeeShield checks
+## What SpiderShield checks
 
 **Security** (weighted 40%)
 - Path traversal
@@ -151,16 +151,16 @@ teeshield scan examples/secure-server     # Rating: B (7.2/10)
 ## JSON output
 
 ```bash
-teeshield scan ./server --format json
-teeshield scan ./server --format json -o report.json
+spidershield scan ./server --format json
+spidershield scan ./server --format json -o report.json
 ```
 
 ## GitHub Action
 
-Add TeeShield to your CI pipeline:
+Add SpiderShield to your CI pipeline:
 
 ```yaml
-- uses: teehooai/teeshield@v0.2.0
+- uses: teehooai/spidershield@v0.2.0
   with:
     target: '.'
     fail-below: '6.0'
@@ -171,7 +171,7 @@ Add TeeShield to your CI pipeline:
 Scan AI agent installations for security misconfigurations and malicious skills.
 
 ```bash
-teeshield agent-check ~/.openclaw
+spidershield agent-check ~/.openclaw
 ```
 
 **What it checks:**
@@ -185,31 +185,31 @@ teeshield agent-check ~/.openclaw
 
 ```bash
 # Verify skill integrity (rug pull detection)
-teeshield agent-check --verify
+spidershield agent-check --verify
 
 # Only approved skills allowed
-teeshield agent-check --allowlist approved.json
+spidershield agent-check --allowlist approved.json
 
 # Strict mode: fail on any finding
-teeshield agent-check --policy strict
+spidershield agent-check --policy strict
 
 # Ignore specific rules
-teeshield agent-check --ignore TS-W001 --ignore typosquat
+spidershield agent-check --ignore TS-W001 --ignore typosquat
 
 # Auto-fix configuration issues
-teeshield agent-check --fix
+spidershield agent-check --fix
 
 # SARIF output for GitHub Code Scanning
-teeshield agent-check --format sarif > results.sarif
+spidershield agent-check --format sarif > results.sarif
 ```
 
 **Skill pinning (rug pull protection):**
 
 ```bash
-teeshield agent-pin add ~/.openclaw/skills/my-skill/SKILL.md
-teeshield agent-pin add-all
-teeshield agent-pin verify    # detect tampered skills
-teeshield agent-pin list
+spidershield agent-pin add ~/.openclaw/skills/my-skill/SKILL.md
+spidershield agent-pin add-all
+spidershield agent-pin verify    # detect tampered skills
+spidershield agent-pin list
 ```
 
 **46 standardized issue codes** across 4 categories:
@@ -225,16 +225,16 @@ teeshield agent-pin list
 
 | Command | Description |
 |---------|-------------|
-| `teeshield scan <path>` | Scan and rate an MCP server |
-| `teeshield rewrite <path>` | Rewrite tool descriptions |
-| `teeshield harden <path>` | Suggest security hardening (advisory only) |
-| `teeshield eval <original> <improved>` | Compare tool selection accuracy |
-| `teeshield agent-check [dir]` | Scan an AI agent for security issues |
-| `teeshield agent-pin <cmd>` | Manage skill pins for rug pull detection |
+| `spidershield scan <path>` | Scan and rate an MCP server |
+| `spidershield rewrite <path>` | Rewrite tool descriptions |
+| `spidershield harden <path>` | Suggest security hardening (advisory only) |
+| `spidershield eval <original> <improved>` | Compare tool selection accuracy |
+| `spidershield agent-check [dir]` | Scan an AI agent for security issues |
+| `spidershield agent-pin <cmd>` | Manage skill pins for rug pull detection |
 
 ## Threat model
 
-TeeShield is a **static analysis linter**, not a runtime sandbox.
+SpiderShield is a **static analysis linter**, not a runtime sandbox.
 
 **What it catches:**
 - Ambiguous tool definitions that lead to agent misuse
@@ -251,7 +251,7 @@ TeeShield is a **static analysis linter**, not a runtime sandbox.
 - Network traffic monitoring
 - Access control enforcement
 
-TeeShield runs before deployment. For runtime protection, pair it with tools like MCP Proxy or container sandboxes.
+SpiderShield runs before deployment. For runtime protection, pair it with tools like MCP Proxy or container sandboxes.
 
 ## License
 

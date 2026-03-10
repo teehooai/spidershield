@@ -7,8 +7,8 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from teeshield.cli import main
-from teeshield.dataset.collector import (
+from spidershield.cli import main
+from spidershield.dataset.collector import (
     get_prs,
     record_agent_scan,
     record_hardener_fix,
@@ -17,7 +17,7 @@ from teeshield.dataset.collector import (
     record_rewrite,
     record_scan,
 )
-from teeshield.dataset.db import get_connection, get_stats, init_db
+from spidershield.dataset.db import get_connection, get_stats, init_db
 
 
 class TestDatabase:
@@ -59,7 +59,7 @@ class TestDatabase:
 class TestCollector:
     def _make_report(self):
         """Create a minimal ScanReport for testing."""
-        from teeshield.models import Rating, ScanReport, SecurityIssue
+        from spidershield.models import Rating, ScanReport, SecurityIssue
 
         return ScanReport(
             target="/tmp/test-server",
@@ -173,7 +173,7 @@ class TestCollector:
 class TestDatasetCLI:
     def test_dataset_stats_empty(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setattr(
-            "teeshield.dataset.db.DEFAULT_DB_PATH",
+            "spidershield.dataset.db.DEFAULT_DB_PATH",
             tmp_path / "nonexistent.db",
         )
         runner = CliRunner()
@@ -184,10 +184,10 @@ class TestDatasetCLI:
     def test_dataset_stats_with_data(self, tmp_path: Path, monkeypatch) -> None:
         db_path = tmp_path / "test.db"
         monkeypatch.setattr(
-            "teeshield.dataset.db.DEFAULT_DB_PATH", db_path,
+            "spidershield.dataset.db.DEFAULT_DB_PATH", db_path,
         )
         # Seed some data
-        from teeshield.models import Rating, ScanReport
+        from spidershield.models import Rating, ScanReport
 
         report = ScanReport(
             target="/tmp/test",
@@ -208,9 +208,9 @@ class TestDatasetCLI:
     def test_dataset_export_json(self, tmp_path: Path, monkeypatch) -> None:
         db_path = tmp_path / "test.db"
         monkeypatch.setattr(
-            "teeshield.dataset.db.DEFAULT_DB_PATH", db_path,
+            "spidershield.dataset.db.DEFAULT_DB_PATH", db_path,
         )
-        from teeshield.models import Rating, ScanReport
+        from spidershield.models import Rating, ScanReport
 
         report = ScanReport(
             target="/tmp/test",
@@ -238,7 +238,7 @@ class TestDatasetCLI:
 
     def test_dataset_export_no_data(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setattr(
-            "teeshield.dataset.db.DEFAULT_DB_PATH",
+            "spidershield.dataset.db.DEFAULT_DB_PATH",
             tmp_path / "nonexistent.db",
         )
         runner = CliRunner()
@@ -253,7 +253,7 @@ class TestDatasetCLI:
         assert db_path.exists()
 
         monkeypatch.setattr(
-            "teeshield.dataset.db.DEFAULT_DB_PATH", db_path,
+            "spidershield.dataset.db.DEFAULT_DB_PATH", db_path,
         )
         runner = CliRunner()
         result = runner.invoke(main, ["dataset", "reset"], input="y\n")
@@ -339,7 +339,7 @@ class TestPRTracking:
     def test_pr_add_cli(self, tmp_path: Path, monkeypatch) -> None:
         db_path = tmp_path / "test.db"
         monkeypatch.setattr(
-            "teeshield.dataset.db.DEFAULT_DB_PATH", db_path,
+            "spidershield.dataset.db.DEFAULT_DB_PATH", db_path,
         )
         runner = CliRunner()
         result = runner.invoke(main, [
@@ -352,7 +352,7 @@ class TestPRTracking:
     def test_pr_list_cli(self, tmp_path: Path, monkeypatch) -> None:
         db_path = tmp_path / "test.db"
         monkeypatch.setattr(
-            "teeshield.dataset.db.DEFAULT_DB_PATH", db_path,
+            "spidershield.dataset.db.DEFAULT_DB_PATH", db_path,
         )
         record_pr(
             repo="org/repo", pr_number=1, title="Test",
@@ -367,7 +367,7 @@ class TestPRTracking:
 class TestAgentCheckDataset:
     def _make_scan_result(self):
         """Create a minimal ScanResult for testing."""
-        from teeshield.agent.models import (
+        from spidershield.agent.models import (
             AuditFramework,
             Finding,
             ScanResult,

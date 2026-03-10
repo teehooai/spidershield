@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teeshield.hardener.prompt import HARDEN_SYSTEM_PROMPT, build_harden_prompt
-from teeshield.hardener.quality_gate import diagnose_fix, score_fix
-from teeshield.hardener.runner import (
+from spidershield.hardener.prompt import HARDEN_SYSTEM_PROMPT, build_harden_prompt
+from spidershield.hardener.quality_gate import diagnose_fix, score_fix
+from spidershield.hardener.runner import (
     HardenFinding,
     _enhance_with_llm,
     _parse_fix_response,

@@ -13,9 +13,9 @@ SECURE = str(ROOT / "examples" / "secure-server")
 
 
 def _run(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
-    """Run teeshield CLI via subprocess."""
+    """Run spidershield CLI via subprocess."""
     return subprocess.run(
-        [sys.executable, "-m", "teeshield"] + args,
+        [sys.executable, "-m", "spidershield"] + args,
         capture_output=True,
         text=True,
         timeout=30,
@@ -57,7 +57,7 @@ class TestScan:
         assert data["version"] == "2.1.0"
         assert "$schema" in data
         assert len(data["runs"]) == 1
-        assert data["runs"][0]["tool"]["driver"]["name"] == "TeeShield"
+        assert data["runs"][0]["tool"]["driver"]["name"] == "SpiderShield"
 
     def test_scan_nonexistent_path(self):
         r = _run(["scan", "/nonexistent/path"], check=False)

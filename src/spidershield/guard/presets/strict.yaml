@@ -1,0 +1,84 @@
+# SpiderShield Policy Preset: strict
+# For production / enterprise environments.
+# Denies shell access, restricts filesystem, escalates writes.
+
+policies:
+  # --- Block all shell execution ---
+  - name: block-all-shell
+    match:
+      tool: "run_command|execute_command|shell_exec|run_terminal_cmd|bash"
+    action: deny
+    reason: "Shell execution not allowed in strict mode"
+    suggestion: "Use specific tool APIs instead of shell commands"
+
+  # --- Sensitive file access ---
+  - name: block-sensitive-files
+    match:
+      tool: "read_file|get_file_text|file_read"
+      args_pattern:
+        path: "\\.(env|key|pem|p12|credentials|secret|token)$"
+    action: deny
+    reason: "Access to sensitive file type blocked"
+    suggestion: "Avoid reading credential/key files directly"
+
+  - name: block-ssh-keys
+    match:
+      tool: "read_file|get_file_text|file_read"
+      args_pattern:
+        path: "\\.ssh/"
+    action: deny
+    reason: "SSH key access blocked"
+    suggestion: "SSH keys should not be read by agent tools"
+
+  - name: block-system-files
+    match:
+      tool: "read_file|get_file_text|file_read"
+      args_pattern:
+        path: "^/(etc|var|usr|sys|proc|boot)/"
+    action: deny
+    reason: "System directory access blocked"
+    suggestion: "Only workspace files are accessible in strict mode"
+
+  - name: block-home-dotfiles
+    match:
+      tool: "read_file|get_file_text|file_read"
+      args_pattern:
+        path: "~/\\.|/home/.*?/\\."
+    action: deny
+    reason: "Dotfile access blocked"
+    suggestion: "Configuration files should not be accessed by agent tools"
+
+  # --- Escalate all writes ---
+  - name: escalate-file-writes
+    match:
+      tool: "write_file|create_file|edit_file|file_write"
+    action: escalate
+    reason: "File write requires approval in strict mode"
+
+  # --- Network restrictions ---
+  - name: block-arbitrary-network
+    match:
+      tool: "http_request|fetch|curl|wget"
+    action: escalate
+    reason: "Network request requires approval in strict mode"
+    suggestion: "Declare required network access in policy whitelist"
+
+  # --- Database safety ---
+  - name: block-db-destructive
+    match:
+      tool: "query|execute_sql|run_query|postgres_query"
+      args_pattern:
+        query: "(?i)(DROP|TRUNCATE|ALTER|DELETE|UPDATE)"
+    action: deny
+    reason: "Destructive database operation blocked in strict mode"
+    suggestion: "Only SELECT queries are allowed in strict mode"
+
+  # --- Cost control ---
+  - name: cost-limit
+    match:
+      any_tool: true
+    condition:
+      token_spent_gt: 50000
+    action: deny
+    reason: "Session token budget exceeded (50K)"
+    suggestion: "Break task into smaller sessions"

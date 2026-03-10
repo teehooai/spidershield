@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-from teeshield.rewriter.prompt import REWRITE_SYSTEM_PROMPT, build_rewrite_prompt
-from teeshield.rewriter.quality_gate import GateResult, _quick_score, diagnose_missing, quality_gate
-from teeshield.rewriter.runner import _rewrite_local
+from spidershield.rewriter.prompt import REWRITE_SYSTEM_PROMPT, build_rewrite_prompt
+from spidershield.rewriter.quality_gate import GateResult, _quick_score, diagnose_missing, quality_gate
+from spidershield.rewriter.runner import _rewrite_local
 
 # --- Template engine bug fixes ---
 
@@ -234,7 +234,7 @@ class TestPromptBuilder:
 
 class TestProviderDetection:
     def test_no_keys_returns_none(self) -> None:
-        from teeshield.rewriter.providers import detect_provider
+        from spidershield.rewriter.providers import detect_provider
 
         with patch.dict(os.environ, {}, clear=True):
             # Clear ALL relevant keys
@@ -245,7 +245,7 @@ class TestProviderDetection:
 
     def test_explicit_provider_override(self) -> None:
         """Explicit provider should work even without env vars."""
-        from teeshield.rewriter.providers import detect_provider
+        from spidershield.rewriter.providers import detect_provider
 
         # This will fail at instantiation (no API key), but that's expected
         # We're testing the detection logic, not the provider initialization
@@ -293,7 +293,7 @@ class TestTemplateQualityEndToEnd:
             {"name": "write_file", "description": "Write a file"},
             {"name": "list_directory", "description": "List directory contents"},
         ]
-        from teeshield.rewriter.runner import _quality_gate
+        from spidershield.rewriter.runner import _quality_gate
 
         for t in tools:
             rewritten = _rewrite_local(t, tools)
@@ -311,7 +311,7 @@ class TestTemplateQualityEndToEnd:
             {"name": "git_log", "description": "Shows commit logs"},
             {"name": "git_branch", "description": "List or create branches"},
         ]
-        from teeshield.rewriter.runner import _quality_gate
+        from spidershield.rewriter.runner import _quality_gate
 
         for t in tools:
             rewritten = _rewrite_local(t, tools)
@@ -422,7 +422,7 @@ class TestSelfCheckRetry:
                         "Raises an error if the schema does not exist."
                     )
 
-        from teeshield.rewriter.runner import _rewrite_llm
+        from spidershield.rewriter.runner import _rewrite_llm
 
         tool = {"name": "list_tables", "description": "Lists tables."}
         result = _rewrite_llm(
@@ -449,7 +449,7 @@ class TestSelfCheckRetry:
                     "Raises an error if the schema does not exist."
                 )
 
-        from teeshield.rewriter.runner import _rewrite_llm
+        from spidershield.rewriter.runner import _rewrite_llm
 
         tool = {"name": "list_tables", "description": "Lists tables."}
         _rewrite_llm(tool, [tool], MockProvider(), min_score=9.0, max_retries=2, use_cache=False)
@@ -465,7 +465,7 @@ class TestSelfCheckRetry:
                 call_count += 1
                 return "Short."  # Always bad
 
-        from teeshield.rewriter.runner import _rewrite_llm
+        from spidershield.rewriter.runner import _rewrite_llm
 
         tool = {"name": "list_tables", "description": "Lists tables."}
         _rewrite_llm(tool, [tool], MockProvider(), min_score=9.8, max_retries=3, use_cache=False)

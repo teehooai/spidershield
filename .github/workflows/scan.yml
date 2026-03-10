@@ -1,4 +1,4 @@
-name: TeeShield Scan
+name: SpiderShield Scan
 
 on:
   workflow_dispatch:
@@ -35,21 +35,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install TeeShield
+      - name: Install SpiderShield
         run: pip install -e .
 
       - name: Run scan
         run: |
-          teeshield scan "${{ inputs.target }}" --format "${{ inputs.format || 'table' }}"
+          spidershield scan "${{ inputs.target }}" --format "${{ inputs.format || 'table' }}"
 
       - name: Run scan (JSON artifact)
         if: always()
         run: |
-          teeshield scan "${{ inputs.target }}" --format json -o scan-report.json || true
+          spidershield scan "${{ inputs.target }}" --format json -o scan-report.json || true
 
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: teeshield-report
+          name: spidershield-report
           path: scan-report.json
