@@ -97,7 +97,7 @@ descriptions remain the gold standard for PR submissions.
 - Compiled TypeScript (playwright-mcp): bundled JS, patterns lost
 - Servers using non-standard registration (manual JSON schemas)
 
-**Impact**: `teeshield scan` reports 0 tools for these servers, making
+**Impact**: `spidershield scan` reports 0 tools for these servers, making
 description scoring impossible. Security scan and architecture check still work.
 
 **Mitigation options** (not yet implemented):
@@ -208,7 +208,7 @@ where needed.
 rewritten twice produces different output, violating G0 reproducibility spirit.
 
 **Solution**: SHA-256 cache keyed on `(tool_name, original_desc, model)`.
-- Location: `~/.teeshield/rewrite-cache/{hash}.json`
+- Location: `~/.spidershield/rewrite-cache/{hash}.json`
 - `--no-cache` flag to force refresh
 - Cache hit = free + offline + deterministic
 
@@ -241,10 +241,10 @@ default temperature sampling.
 
 ## Finding 8: SpiderRating Scoring Unification (Implemented)
 
-**Problem**: TeeShield used a custom scoring model (security 40% + desc 35% + arch 25%,
+**Problem**: SpiderShield used a custom scoring model (security 40% + desc 35% + arch 25%,
 grades F/C/B/A/A+) that diverged from the SpiderRating standard used by the ecosystem.
 This created friction when converting scan output for SpiderRating consumers and led to
-code duplication between `scanner/runner.py` and `scripts/teeshield_to_spiderrating.py`.
+code duplication between `scanner/runner.py` and `scripts/spidershield_to_spiderrating.py`.
 
 **Changes**:
 1. Rating enum: F/C/B/A/A+ → F/D/C/B/A (added D=Deficient, removed A+=A_PLUS)
@@ -254,7 +254,7 @@ code duplication between `scanner/runner.py` and `scripts/teeshield_to_spiderrat
 5. Hard constraints: critical→F, no_tools→F, license_banned→D cap
 6. Grade thresholds: A≥8.5, B≥7.0, C≥5.0, D≥3.0, F<3.0
 7. `spiderrating.py` library module: canonical conversion logic
-8. `scripts/teeshield_to_spiderrating.py`: 458→99 lines (import wrapper)
+8. `scripts/spidershield_to_spiderrating.py`: 458→99 lines (import wrapper)
 
 **Design decisions**:
 - Architecture bonus cap 3.0 (not 2.0) for more granular signal
@@ -284,7 +284,7 @@ formula and grade boundaries.
   side_effects, capability_disclosure, operational_boundaries)
 - `skill_security_from_findings()`: maps SkillVerdict → security penalty
   (MALICIOUS=-3, SUSPICIOUS=-1, TAMPERED=-2)
-- `cli.py`: `teeshield agent-check --format spiderrating` output path
+- `cli.py`: `spidershield agent-check --format spiderrating` output path
 
 ---
 
@@ -313,3 +313,104 @@ Post-optimization baseline (after P0 + SpiderRating unification):
 | Grades | F/D/C/B/A | 3.0/5.0/7.0/8.5 | Yes |
 | LLM Rewrite | With cache | Deterministic | Yes (cache hit) |
 | LLM Rewrite | Without cache | temperature=0 | Nearly (model-dependent) |
+
+---
+
+## Finding 10: Data Flywheel Infrastructure (Implemented)
+
+**Problem**: Scan results were stored as flat records with no versioning,
+no temporal tracking, and no way to measure scoring accuracy over time.
+This blocked building a data moat: we couldn't tell if scoring changes
+improved or degraded accuracy, and couldn't track server health trends.
+
+**Solution**: Schema v4 migration with 6 new tables and enriched metadata:
+
+1. **scoring_versions** -- Track scoring formula changes with semantic versioning
+2. **server_timeline** -- Denormalized temporal view with precomputed deltas
+3. **pattern_effectiveness** -- Track false positive rates per pattern
+4. **scoring_calibration** -- Predicted vs ground truth ratings for accuracy
+5. **benchmarks** -- Known-good/bad servers for regression testing
+6. **pr_scan_links** -- Connect scan results to PR outcomes
+
+**Enriched existing tables**:
+- `scans` +5 columns: scoring_version, scanner_version, pattern_set_hash,
+  scan_duration_ms, source_type
+- `security_issues` +3 columns: pattern_name, false_positive, reviewed_at
+- `agent_findings` +2 columns: false_positive, reviewed_at
+
+**New CLI commands**:
+- `spidershield dataset benchmark-add/list/run` -- Register and verify benchmarks
+- `spidershield dataset calibrate` -- Label scans with ground truth ratings
+- `spidershield dataset calibrate-report` -- Measure scoring accuracy
+
+**Scanner integration**: `run_scan_report()` now computes scan_duration_ms
+and pattern_set_hash. `run_scan()` passes scoring_version, pattern metadata,
+and source_type to `record_scan()`. Each scan auto-inserts timeline and
+calibration entries.
+
+**Flywheel mechanics**:
+- More scans -> better pattern effectiveness data -> fewer false positives
+- Calibration labels -> scoring accuracy measurement -> formula improvements
+- Benchmarks -> regression detection -> confidence in changes
+- Timeline deltas -> before/after proof for PR campaigns
+
+**Impact**: 641 tests passing. Schema v4 migration is backward-compatible
+(auto-migrates from v3). All new columns have defaults, so existing data
+is preserved.
+
+---
+
+## Finding 11: SDK Runtime Guard Telemetry (Implemented)
+
+**Problem**: The data flywheel only covered static analysis (`spidershield scan`).
+Runtime guard (`SpiderGuard.check()`) wrote to JSONL audit logs but NOT to
+the SQLite dataset. This meant:
+- No runtime decision data for pattern effectiveness analysis
+- No deny/escalate statistics for policy tuning
+- No PII detection rates for DLP improvement
+- The SDK sensor network was silent to the flywheel
+
+**Solution**: Schema v5 migration with 2 new tables + SDK wiring:
+
+1. **guard_events** -- Every `before_call()` decision and `after_call()` DLP
+   finding. Fields: tool_name, decision, reason, policy_matched, pii_types,
+   policy_preset, framework, environment.
+2. **guard_sessions** -- Aggregated per-session summaries. UPSERT on every
+   event: total_calls, allowed, denied, escalated, pii_detections.
+
+**Wiring**:
+- `RuntimeGuard.__init__()` accepts `dataset=True` and `policy_preset`
+- `_record_before()` and `_record_after()` call `_record_to_dataset()`
+  when dataset is enabled
+- `_record_to_dataset()` is wrapped in try/except (best-effort, never
+  fails the guard check)
+- `SpiderGuard.__init__()` exposes `dataset=True` kwarg
+
+**Design decisions**:
+- **opt-in** (`dataset=False` default): Zero overhead for users who don't
+  want telemetry. No surprise disk writes.
+- **best-effort**: SQLite failures are silently swallowed. Guard decisions
+  must never depend on dataset writes succeeding.
+- **auto-aggregation**: Session table uses UPSERT, no batch jobs needed.
+- **dual logging**: JSONL audit (human-readable, streaming) + SQLite
+  (queryable, aggregatable) coexist independently.
+
+**Usage**:
+```python
+# Before: no data accumulation
+guard = SpiderGuard(policy="balanced")
+
+# After: every check feeds the flywheel
+guard = SpiderGuard(policy="balanced", dataset=True)
+```
+
+**Impact**: 647 tests passing. Schema v5 auto-migrates from v4.
+`get_stats()` now includes guard_events, guard_denied, guard_sessions.
+
+**Flywheel completion**:
+```
+Static scan ─┐
+             ├─→ SQLite dataset ─→ Pattern tuning + scoring calibration
+Runtime guard┘
+```
+Both data sources now feed the same flywheel. The SDK is a sensor.

@@ -45,8 +45,28 @@ def resolve_target(target: str) -> Path:
     raise SystemExit(1)
 
 
+def _compute_pattern_set_hash() -> str:
+    """SHA-256 hash of sorted pattern names for change detection."""
+    import hashlib
+
+    from spidershield.scanner.security_scan import (
+        DANGEROUS_PATTERNS,
+        TS_DANGEROUS_PATTERNS,
+    )
+
+    names = sorted(DANGEROUS_PATTERNS.keys()) + sorted(
+        TS_DANGEROUS_PATTERNS.keys()
+    )
+    return hashlib.sha256(
+        "|".join(names).encode()
+    ).hexdigest()[:16]
+
+
 def run_scan_report(target: str, tools_json: str | None = None) -> ScanReport:
     """Run a full scan and return the report object."""
+    import time as _time
+
+    _scan_start = _time.monotonic()
     path = resolve_target(target)
 
     license_info, license_ok = check_license(path)
@@ -129,7 +149,9 @@ def run_scan_report(target: str, tools_json: str | None = None) -> ScanReport:
     if not has_tests:
         recommendations.append("Add automated tests for reliability")
 
-    return ScanReport(
+    scan_duration_ms = int((_time.monotonic() - _scan_start) * 1000)
+
+    report = ScanReport(
         target=target,
         license=license_info,
         license_ok=license_ok,
@@ -147,6 +169,10 @@ def run_scan_report(target: str, tools_json: str | None = None) -> ScanReport:
         rating=rating,
         recommendations=recommendations,
     )
+    # Attach scan metadata for dataset recording (not serialized in report)
+    report._scan_duration_ms = scan_duration_ms
+    report._pattern_set_hash = _compute_pattern_set_hash()
+    return report
 
 
 def run_scan(
@@ -167,7 +193,13 @@ def run_scan(
 
     # Record to local dataset (best-effort, never fails the scan)
     from spidershield.dataset.collector import record_scan
-    record_scan(report)
+    record_scan(
+        report,
+        scoring_version="v2",
+        pattern_set_hash=getattr(report, "_pattern_set_hash", None),
+        scan_duration_ms=getattr(report, "_scan_duration_ms", None),
+        source_type="local",
+    )
 
     if output_format == "json" or output_path:
         json_str = report.model_dump_json(indent=2)
@@ -175,7 +207,7 @@ def run_scan(
             Path(output_path).write_text(json_str)
             console.print(f"\n[green]Report saved to {output_path}[/green]")
         else:
-            console.print(json_str)
+            print(json_str)
     else:
         _print_table(report)
 

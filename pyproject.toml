@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spidershield"
-version = "0.3.0"
+version = "0.3.1"
 description = "Security scanner and runtime guard for MCP servers -- static analysis, policy enforcement, DLP, prompt injection detection"
 readme = "README.md"
 license = "MIT"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["mcp", "ai-agent", "security", "tool-firewall", "runtime-security", "dlp", "prompt-injection", "guardrails", "static-analysis", "sarif"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

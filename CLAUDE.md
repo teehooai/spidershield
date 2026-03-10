@@ -8,16 +8,19 @@ Think "npm audit for MCP tools".
 ## Architecture
 ```
 src/spidershield/
-  cli.py              -- Click CLI (scan, rewrite, harden, eval)
+  cli.py              -- Click CLI (scan, rewrite, harden, eval, dataset)
   models.py            -- Pydantic V2 models (ScanReport, SecurityIssue, etc.)
   server.py            -- MCP server mode (scan_mcp_server tool)
   spiderrating.py      -- SpiderRating format conversion (metadata, grades)
   scanner/
-    runner.py          -- Orchestrates 4-stage scan pipeline
+    runner.py          -- Orchestrates 4-stage scan pipeline + metadata emission
     description_quality.py -- Tool description scoring (7 criteria)
     security_scan.py   -- Static security pattern matching
     architecture_check.py -- Code quality checks
     license_check.py   -- License detection
+  dataset/
+    db.py              -- SQLite schema v5, migration, get_stats
+    collector.py       -- Best-effort recording (scans, rewrites, PRs, agent, guard)
   agent/
     scanner.py         -- Agent config security audit
     skill_scanner.py   -- Skill malware/injection pattern matching (20 patterns)
@@ -120,4 +123,7 @@ Before submitting a PR to any external MCP repo, ALL 5 gates must pass:
 | Agent config checks | agent/scanner.py |
 | Toxic flow detection | agent/toxic_flow.py (keyword + AST) |
 | LLM rewrite cache | rewriter/cache.py (~/.spidershield/rewrite-cache/) |
+| Dataset schema/migration | dataset/db.py (SCHEMA_VERSION, _migrate_vN) |
+| Add benchmark server | cli.py (dataset benchmark-add/list/run) |
+| Label calibration data | cli.py (dataset calibrate/calibrate-report) |
 | Add CLI command | cli.py |

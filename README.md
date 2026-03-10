@@ -1,25 +1,22 @@
-# SpiderShield -- Security Scanner for MCP Servers & AI Agents
+# SpiderShield -- Security Scanner & Runtime Guard for MCP Servers
 
 ![SpiderShield Verified](https://img.shields.io/badge/MCP-SpiderShield_Verified-green)
 [![PyPI](https://img.shields.io/pypi/v/spidershield)](https://pypi.org/project/spidershield/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**`npm audit` for MCP tools.** Static analysis linter that scans MCP server tool definitions and AI agent configurations for security vulnerabilities, malicious patterns, and description quality issues. 46 standardized checks across 4 categories.
+**Security toolkit for MCP servers and AI agents.** Static analysis, runtime policy enforcement, DLP, and audit logging -- from development to production.
 
-## Why SpiderShield?
+## What SpiderShield does
 
-MCP is the open protocol connecting AI agents to tools. But the ecosystem has two problems:
+SpiderShield is a 5-subsystem security toolkit:
 
-**Problem 1: Tool descriptions are terrible.** We scanned 79 MCP tools across 7 public servers -- average description quality is 3.1/10. Agents pick tools by reading descriptions, so vague text like *"access filesystem"* gives them no boundaries.
-
-**Problem 2: Agent installations are insecure.** Skills can contain reverse shells, credential theft, and prompt injection. Configurations ship with no auth, disabled sandboxes, and open DM policies.
-
-SpiderShield is a dual-module static analysis linter:
-
-| Module | Command | What it does |
-|--------|---------|-------------|
-| **MCP Server Scanner** | `spidershield scan` | Score tool descriptions, detect code vulnerabilities, rate overall quality (F/C/B/A/A+) |
-| **Agent Security Checker** | `spidershield agent-check` | 18 config checks, 15 malicious pattern detections, toxic flow analysis, rug pull detection |
+| Subsystem | Command / API | What it does |
+|-----------|---------------|-------------|
+| **Static Scanner** | `spidershield scan` | Score tool descriptions, detect code vulnerabilities, rate overall quality (F/C/B/A/A+) |
+| **Agent Security** | `spidershield agent-check` | 18 config checks, 15 malicious pattern detections, toxic flow analysis, rug pull detection |
+| **Runtime Guard SDK** | `SpiderGuard(policy="balanced")` | Pre/post-execution policy enforcement for tool calls |
+| **MCP Proxy** | `guard_mcp_server(cmd)` | Transparent security proxy between agent and MCP server |
+| **DLP Engine** | Built into Guard SDK | Scan tool outputs for PII/secrets, redact or block |
 
 ## Install
 
@@ -29,7 +26,9 @@ pip install spidershield
 
 Requires Python 3.11+.
 
-## Quickstart
+## Quick Start
+
+### Static scan (CI / development)
 
 ```bash
 spidershield scan ./your-mcp-server
@@ -53,6 +52,75 @@ Example output:
 | Overall               | Rating: B |  7.6/10 |
 | Improvement Potential |           |  2.4/10 |
 +---------------------------------------------+
+```
+
+### Runtime Guard SDK (production)
+
+Enforce security policies on every tool call at runtime:
+
+```python
+from spidershield import SpiderGuard, Decision
+
+guard = SpiderGuard(policy="strict")
+
+result = guard.check("read_file", {"path": "/etc/passwd"})
+if result.decision == Decision.DENY:
+    print(result.reason)       # "System file access blocked"
+    print(result.suggestion)   # "Use application-level files instead"
+```
+
+Policy presets:
+
+| Preset | Behavior |
+|--------|----------|
+| `strict` | Deny by default, explicit allow list |
+| `balanced` | Block known-dangerous patterns, allow common operations |
+| `permissive` | Warn on suspicious patterns, allow most operations |
+| Custom YAML | Load your own policy file: `SpiderGuard(policy="my-policy.yaml")` |
+
+With audit logging and DLP:
+
+```python
+guard = SpiderGuard(
+    policy="strict",
+    audit=True,              # Write audit trail to disk
+    audit_dir="./logs",      # Custom audit directory
+    dlp="redact",            # Scan outputs for PII/secrets, redact matches
+)
+
+# Pre-execution check
+result = guard.check("query_db", {"sql": "SELECT * FROM users"})
+
+# Post-execution DLP scan
+clean_output = guard.after_check("query_db", raw_result)
+```
+
+With data flywheel (opt-in telemetry to local SQLite):
+
+```python
+guard = SpiderGuard(policy="balanced", dataset=True)
+# Every check() call feeds the local dataset for scoring calibration
+```
+
+### MCP Proxy (transparent protection)
+
+Wrap any MCP server with SpiderShield policy enforcement:
+
+```python
+from spidershield import guard_mcp_server
+
+# Proxy between agent and server, enforcing "balanced" policy
+guard_mcp_server(
+    ["npx", "server-filesystem", "/tmp"],
+    policy="balanced",
+    audit=True,
+)
+```
+
+Or from the CLI:
+
+```bash
+spidershield proxy -- npx server-filesystem /tmp --policy balanced
 ```
 
 ## Rewrite tool descriptions
@@ -101,13 +169,15 @@ The repo includes example MCP servers for instant demo:
 git clone https://github.com/teehooai/spidershield
 cd spidershield
 
-spidershield scan examples/insecure-server   # Rating: C (4.8/10)
-spidershield scan examples/secure-server     # Rating: B (7.2/10)
+spidershield scan examples/insecure-server   # Rating: D (3.3/10)
+spidershield scan examples/secure-server     # Rating: D (4.7/10)
 ```
 
 ## What SpiderShield checks
 
-**Security** (weighted 40%)
+### Static Scanner
+
+**Security** (weighted 35%)
 - Path traversal
 - Command injection / dangerous eval
 - SQL injection (Python + TypeScript)
@@ -125,7 +195,7 @@ spidershield scan examples/secure-server     # Rating: B (7.2/10)
 - Disambiguation between similar tools
 - Length (too short = vague, too long = noisy)
 
-**Architecture** (weighted 25%)
+**Architecture** (weighted 30%)
 - Test coverage (gradual: count-based)
 - Error handling (gradual: coverage-based)
 - README quality (gradual: length-based)
@@ -138,35 +208,7 @@ spidershield scan examples/secure-server     # Rating: B (7.2/10)
 - GPL, AGPL = warning
 - Missing = fail
 
-## Rating scale
-
-| Rating | Score | Meaning |
-|--------|-------|---------|
-| A+ | 9.0+ | Production-ready |
-| A | 8.0+ | Safe with minor suggestions |
-| B | 6.0+ | Usable, needs improvements |
-| C | 4.0+ | Significant issues |
-| F | <4.0 | Unsafe, do not deploy |
-
-## JSON output
-
-```bash
-spidershield scan ./server --format json
-spidershield scan ./server --format json -o report.json
-```
-
-## GitHub Action
-
-Add SpiderShield to your CI pipeline:
-
-```yaml
-- uses: teehooai/spidershield@v0.2.0
-  with:
-    target: '.'
-    fail-below: '6.0'
-```
-
-## Agent security scanning (new in v0.2)
+### Agent Security Checker
 
 Scan AI agent installations for security misconfigurations and malicious skills.
 
@@ -221,6 +263,36 @@ spidershield agent-pin list
 | TS-C001~C018 | Config | No auth, sandbox disabled, SSRF enabled |
 | TS-P001~P002 | Pin | Verified, tampered |
 
+## Rating scale (SpiderRating)
+
+| Rating | Score | Meaning |
+|--------|-------|---------|
+| A | 8.5+ | Production-ready |
+| B | 7.0+ | Safe with minor suggestions |
+| C | 5.0+ | Usable, needs improvements |
+| D | 3.0+ | Significant issues |
+| F | <3.0 | Unsafe, do not deploy |
+
+Formula: `description * 0.35 + security_adjusted * 0.35 + architecture * 0.30`
+
+## JSON output
+
+```bash
+spidershield scan ./server --format json
+spidershield scan ./server --format json -o report.json
+```
+
+## GitHub Action
+
+Add SpiderShield to your CI pipeline:
+
+```yaml
+- uses: teehooai/spidershield@v0.3.0
+  with:
+    target: '.'
+    fail-below: '6.0'
+```
+
 ## Commands
 
 | Command | Description |
@@ -231,10 +303,14 @@ spidershield agent-pin list
 | `spidershield eval <original> <improved>` | Compare tool selection accuracy |
 | `spidershield agent-check [dir]` | Scan an AI agent for security issues |
 | `spidershield agent-pin <cmd>` | Manage skill pins for rug pull detection |
+| `spidershield dataset stats` | View data flywheel statistics |
+| `spidershield dataset benchmark-add` | Add a benchmark entry |
+| `spidershield dataset benchmark-run` | Re-run benchmarks |
+| `spidershield dataset calibrate` | Run scoring calibration |
 
 ## Threat model
 
-SpiderShield is a **static analysis linter**, not a runtime sandbox.
+SpiderShield provides both **static analysis** and **runtime policy enforcement**.
 
 **What it catches:**
 - Ambiguous tool definitions that lead to agent misuse
@@ -245,13 +321,13 @@ SpiderShield is a **static analysis linter**, not a runtime sandbox.
 - Dangerous capability combinations (data exfiltration flows)
 - Insecure agent configurations (no auth, disabled sandbox, open DM policy)
 - Skill tampering (rug pull detection via content hashing)
+- PII/secret leakage in tool outputs (DLP engine)
+- Policy violations at runtime (Runtime Guard)
 
 **What it does NOT do:**
-- Runtime isolation or sandboxing
 - Network traffic monitoring
-- Access control enforcement
-
-SpiderShield runs before deployment. For runtime protection, pair it with tools like MCP Proxy or container sandboxes.
+- Container-level sandboxing
+- Access control management (it enforces policies, not manages identities)
 
 ## License
 

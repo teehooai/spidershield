@@ -34,11 +34,15 @@ class RuntimeGuard:
         policy_engine: PolicyEngine | None = None,
         audit_logger: Any | None = None,
         dlp_engine: Any | None = None,
+        dataset: bool = False,
+        policy_preset: str | None = None,
     ) -> None:
         self._policy = policy_engine or PolicyEngine()
         self._audit_log: list[dict[str, Any]] = []
         self._dlp_engine = dlp_engine
         self._audit_logger = audit_logger
+        self._dataset = dataset
+        self._policy_preset = policy_preset
 
     @property
     def policy_engine(self) -> PolicyEngine:
@@ -95,6 +99,10 @@ class RuntimeGuard:
         if self._audit_logger is not None:
             self._audit_logger.log(entry)
 
+        if self._dataset:
+            self._record_to_dataset(ctx, result.decision.value,
+                                    result.reason, result.policy_matched)
+
     def _record_after(
         self, ctx: CallContext, pii_detected: list[str]
     ) -> None:
@@ -111,3 +119,35 @@ class RuntimeGuard:
 
         if self._audit_logger is not None:
             self._audit_logger.log(entry)
+
+        if self._dataset and pii_detected:
+            self._record_to_dataset(
+                ctx, "dlp", pii_types=pii_detected,
+            )
+
+    def _record_to_dataset(
+        self,
+        ctx: CallContext,
+        decision: str,
+        reason: str | None = None,
+        policy_matched: str | None = None,
+        pii_types: list[str] | None = None,
+    ) -> None:
+        """Best-effort write to SQLite dataset (flywheel sensor)."""
+        try:
+            from spidershield.dataset.collector import record_guard_event
+            record_guard_event(
+                tool_name=ctx.tool_name,
+                decision=decision,
+                session_id=ctx.session_id or None,
+                agent_id=ctx.agent_id or None,
+                call_index=ctx.call_index,
+                reason=reason,
+                policy_matched=policy_matched,
+                pii_types=pii_types,
+                policy_preset=self._policy_preset,
+                framework=ctx.framework or None,
+                environment=ctx.environment or None,
+            )
+        except Exception:
+            pass  # Best-effort: never fail the guard

@@ -165,7 +165,10 @@ async def main():
 def run():
     """Synchronous entry point for the console script."""
     import asyncio
+    import sys
 
+    print("SpiderShield MCP server started, waiting for JSON-RPC on stdin...",
+          file=sys.stderr)
     asyncio.run(main())
 
 

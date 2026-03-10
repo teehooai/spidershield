@@ -17,7 +17,7 @@ Public API:
     guard_mcp_server(["npx", "server-filesystem", "/tmp"], policy="balanced")
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from .guard.context import CallContext
 from .guard.core import RuntimeGuard
@@ -48,6 +48,7 @@ class SpiderGuard:
         audit: bool = False,
         audit_dir: str | None = None,
         dlp: str | None = None,
+        dataset: bool = False,
     ) -> None:
         engine = PolicyEngine.from_name_or_path(policy)
 
@@ -65,6 +66,8 @@ class SpiderGuard:
             policy_engine=engine,
             audit_logger=logger,
             dlp_engine=dlp_engine,
+            dataset=dataset,
+            policy_preset=policy,
         )
         self._call_index = 0
 

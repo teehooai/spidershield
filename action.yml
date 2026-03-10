@@ -1,5 +1,5 @@
 name: 'SpiderShield Scan'
-description: 'Scan an MCP server for security issues, description quality, and architecture'
+description: 'Security scanner & runtime guard for MCP servers -- static analysis, policy enforcement, DLP'
 branding:
   icon: 'shield'
   color: 'blue'

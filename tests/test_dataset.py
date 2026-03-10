@@ -40,7 +40,7 @@ class TestDatabase:
             ver = conn.execute(
                 "SELECT version FROM schema_version"
             ).fetchone()[0]
-            assert ver == 4
+            assert ver == 5
 
     def test_get_stats_no_db(self, tmp_path: Path) -> None:
         stats = get_stats(tmp_path / "nonexistent.db")
@@ -505,6 +505,185 @@ class TestSchemaV4:
         assert stats["timeline_entries"] == 1
         assert "calibration_total" in stats
         assert stats["calibration_total"] == 1
+
+
+class TestBenchmarkCLI:
+    def test_benchmark_add(self, tmp_path: Path, monkeypatch) -> None:
+        db_path = tmp_path / "test.db"
+        monkeypatch.setattr("spidershield.dataset.db.DEFAULT_DB_PATH", db_path)
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            "dataset", "benchmark-add", "/tmp/good-server",
+            "-r", "A", "-s", "8.5", "-c", "known-good",
+        ])
+        assert result.exit_code == 0
+        assert "Benchmark added" in result.output
+
+    def test_benchmark_list_empty(self, tmp_path: Path, monkeypatch) -> None:
+        db_path = tmp_path / "test.db"
+        monkeypatch.setattr("spidershield.dataset.db.DEFAULT_DB_PATH", db_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["dataset", "benchmark-list"])
+        assert result.exit_code == 0
+        assert "No benchmarks" in result.output
+
+    def test_benchmark_list_with_data(self, tmp_path: Path, monkeypatch) -> None:
+        db_path = tmp_path / "test.db"
+        monkeypatch.setattr("spidershield.dataset.db.DEFAULT_DB_PATH", db_path)
+        runner = CliRunner()
+        runner.invoke(main, [
+            "dataset", "benchmark-add", "/tmp/server1",
+            "-r", "B", "-c", "test",
+        ])
+        result = runner.invoke(main, ["dataset", "benchmark-list"])
+        assert result.exit_code == 0
+        assert "Benchmark Servers" in result.output
+
+    def test_calibrate_no_scan(self, tmp_path: Path, monkeypatch) -> None:
+        db_path = tmp_path / "test.db"
+        monkeypatch.setattr("spidershield.dataset.db.DEFAULT_DB_PATH", db_path)
+        init_db(db_path)
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            "dataset", "calibrate", "999", "-r", "A",
+        ])
+        assert result.exit_code == 0
+        assert "No calibration entry" in result.output
+
+    def test_calibrate_with_scan(self, tmp_path: Path, monkeypatch) -> None:
+        db_path = tmp_path / "test.db"
+        monkeypatch.setattr("spidershield.dataset.db.DEFAULT_DB_PATH", db_path)
+        from spidershield.models import Rating, ScanReport
+        report = ScanReport(
+            target="/tmp/test",
+            tool_count=2, security_score=8.0,
+            description_score=7.0, architecture_score=6.0,
+            overall_score=7.2, rating=Rating.B,
+        )
+        scan_id = record_scan(report, db_path=db_path)
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            "dataset", "calibrate", str(scan_id), "-r", "B",
+        ])
+        assert result.exit_code == 0
+        assert "Labeled scan" in result.output
+
+    def test_calibrate_report_empty(self, tmp_path: Path, monkeypatch) -> None:
+        db_path = tmp_path / "test.db"
+        monkeypatch.setattr("spidershield.dataset.db.DEFAULT_DB_PATH", db_path)
+        init_db(db_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["dataset", "calibrate-report"])
+        assert result.exit_code == 0
+        assert "No labeled calibration" in result.output
+
+
+class TestGuardDataset:
+    """Tests for runtime guard telemetry in dataset."""
+
+    def test_record_guard_event(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        from spidershield.dataset.collector import record_guard_event
+        eid = record_guard_event(
+            tool_name="read_file",
+            decision="deny",
+            session_id="sess-1",
+            agent_id="claude",
+            call_index=0,
+            reason="SSH key access blocked",
+            policy_matched="block-ssh-keys",
+            policy_preset="strict",
+            db_path=db_path,
+        )
+        assert eid is not None
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM guard_events WHERE id = ?", (eid,)
+            ).fetchone()
+            assert row["tool_name"] == "read_file"
+            assert row["decision"] == "deny"
+            assert row["policy_matched"] == "block-ssh-keys"
+
+    def test_guard_session_upsert(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        from spidershield.dataset.collector import record_guard_event
+        record_guard_event(
+            tool_name="read_file", decision="allow",
+            session_id="sess-2", db_path=db_path,
+        )
+        record_guard_event(
+            tool_name="write_file", decision="deny",
+            session_id="sess-2", db_path=db_path,
+        )
+        record_guard_event(
+            tool_name="exec_cmd", decision="deny",
+            session_id="sess-2", db_path=db_path,
+        )
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM guard_sessions "
+                "WHERE session_id = 'sess-2'"
+            ).fetchone()
+            assert row["total_calls"] == 3
+            assert row["allowed"] == 1
+            assert row["denied"] == 2
+
+    def test_guard_event_with_pii(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        from spidershield.dataset.collector import record_guard_event
+        eid = record_guard_event(
+            tool_name="search",
+            decision="dlp",
+            pii_types=["email", "ssn"],
+            session_id="sess-3",
+            db_path=db_path,
+        )
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT pii_types FROM guard_events WHERE id = ?",
+                (eid,)
+            ).fetchone()
+            assert row["pii_types"] == "email,ssn"
+
+    def test_guard_stats(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        from spidershield.dataset.collector import record_guard_event
+        record_guard_event(
+            tool_name="t1", decision="allow",
+            session_id="s1", db_path=db_path,
+        )
+        record_guard_event(
+            tool_name="t2", decision="deny",
+            session_id="s1", db_path=db_path,
+        )
+        stats = get_stats(db_path)
+        assert stats["guard_events"] == 2
+        assert stats["guard_denied"] == 1
+        assert stats["guard_sessions"] == 1
+
+    def test_spiderguard_dataset_integration(self, tmp_path: Path, monkeypatch) -> None:
+        """SpiderGuard with dataset=True writes to SQLite."""
+        db_path = tmp_path / "test.db"
+        monkeypatch.setattr("spidershield.dataset.db.DEFAULT_DB_PATH", db_path)
+        from spidershield import SpiderGuard
+        guard = SpiderGuard(policy="balanced", dataset=True)
+        guard.check("read_file", {"path": "/etc/passwd"}, session_id="s1")
+        guard.check("list_files", {"dir": "/tmp"}, session_id="s1")
+
+        stats = get_stats(db_path)
+        assert stats["guard_events"] >= 2
+
+    def test_guard_never_raises(self, tmp_path: Path) -> None:
+        """Record failure should not crash the guard."""
+        from spidershield.dataset.collector import record_guard_event
+        # Bad db_path should be silently handled
+        result = record_guard_event(
+            tool_name="test",
+            decision="allow",
+            db_path=tmp_path / "nonexistent_dir" / "sub" / "test.db",
+        )
+        # Should return None or an id, but never raise
+        assert result is None or isinstance(result, int)
 
 
 class TestAgentCheckDataset:

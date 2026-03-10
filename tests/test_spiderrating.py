@@ -188,3 +188,65 @@ class TestConvert:
         result = convert(report, "o", "r", github_meta=meta)
         assert result["score"]["grade"] == "F"
         assert result["score"]["overall"] <= 2.0
+
+    def test_enriched_tools_field(self):
+        """Verify individual tool scores are included in output."""
+        report = {
+            "tool_scores": [
+                {
+                    "tool_name": "run_query",
+                    "has_action_verb": True,
+                    "has_scenario_trigger": False,
+                    "has_param_docs": True,
+                    "has_param_examples": False,
+                    "has_error_guidance": True,
+                    "disambiguation_score": 0.7,
+                    "overall_score": 6.5,
+                },
+                {
+                    "tool_name": "list_tables",
+                    "has_action_verb": True,
+                    "has_scenario_trigger": True,
+                    "has_param_docs": True,
+                    "has_param_examples": True,
+                    "has_error_guidance": True,
+                    "disambiguation_score": 0.9,
+                    "overall_score": 9.0,
+                },
+            ],
+            "security_score": 10.0,
+            "security_issues": [],
+            "architecture_score": 8.0,
+            "tool_count": 2,
+            "license": "MIT",
+        }
+        meta = {"stars": 50, "forks": 5}
+        result = convert(report, "org", "repo", github_meta=meta)
+
+        assert "tools" in result
+        assert len(result["tools"]) == 2
+        assert result["tools"][0]["name"] == "run_query"
+        assert result["tools"][0]["score"] == 6.5
+        assert result["tools"][0]["criteria"]["action_verb"] is True
+        assert result["tools"][0]["criteria"]["param_examples"] is False
+        assert result["tools"][0]["criteria"]["disambiguation"] == 0.7
+        assert result["tools"][1]["name"] == "list_tables"
+        assert result["tools"][1]["score"] == 9.0
+
+    def test_meta_field(self):
+        """Verify scanner metadata is included in output."""
+        report = {
+            "tool_scores": [],
+            "security_score": 8.0,
+            "security_issues": [],
+            "architecture_score": 7.0,
+            "tool_count": 1,
+        }
+        meta = {"stars": 0, "forks": 0}
+        result = convert(report, "o", "r", github_meta=meta)
+
+        assert "meta" in result
+        assert result["meta"]["scanner"] == "spidershield"
+        assert result["meta"]["scoring_version"] == "v2"
+        assert result["meta"]["format_version"] == "2.0"
+        assert "scanner_version" in result["meta"]

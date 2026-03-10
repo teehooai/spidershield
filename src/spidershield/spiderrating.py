@@ -14,6 +14,15 @@ import time
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
+from importlib.metadata import version as _pkg_version
+
+
+def _get_version() -> str:
+    """Get spidershield package version."""
+    try:
+        return _pkg_version("spidershield")
+    except Exception:
+        return "unknown"
 
 
 def fetch_github_metadata(owner: str, repo: str) -> dict:
@@ -481,7 +490,14 @@ def convert_skill(
             "metadata": metadata,
             "hard_constraint_applied": hard_constraint,
         },
+        "tools": [],
         "tool_count": 0,
+        "meta": {
+            "scanner": "spidershield",
+            "scanner_version": _get_version(),
+            "scoring_version": "v2",
+            "format_version": "2.0",
+        },
         "scanned_at": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
         "scan_duration_ms": duration_ms,
     }
@@ -540,6 +556,23 @@ def convert(
 
     duration_ms = int((time.time() - start) * 1000)
 
+    # Map individual tool description scores for rich display
+    tools = [
+        {
+            "name": t.get("tool_name", ""),
+            "score": round(t.get("overall_score", 5.0), 1),
+            "criteria": {
+                "action_verb": t.get("has_action_verb", False),
+                "scenario_trigger": t.get("has_scenario_trigger", False),
+                "param_docs": t.get("has_param_docs", False),
+                "param_examples": t.get("has_param_examples", False),
+                "error_guidance": t.get("has_error_guidance", False),
+                "disambiguation": round(t.get("disambiguation_score", 0.5), 2),
+            },
+        }
+        for t in tool_scores_raw
+    ]
+
     return {
         "server": {
             "slug": f"{owner}/{repo}",
@@ -567,7 +600,14 @@ def convert(
             "metadata": metadata,
             "hard_constraint_applied": hard_constraint,
         },
+        "tools": tools,
         "tool_count": tool_count,
+        "meta": {
+            "scanner": "spidershield",
+            "scanner_version": _get_version(),
+            "scoring_version": "v2",
+            "format_version": "2.0",
+        },
         "scanned_at": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
         "scan_duration_ms": duration_ms,
     }
