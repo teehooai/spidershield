@@ -45,6 +45,12 @@ semgrep = [
     "semgrep>=1.60",
 ]
 
+[project.urls]
+Homepage = "https://spidershield.dev"
+Repository = "https://github.com/teehooai/spidershield"
+Documentation = "https://spidershield.dev/docs"
+Changelog = "https://github.com/teehooai/spidershield/blob/master/CHANGELOG.md"
+
 [project.scripts]
 spidershield = "spidershield.cli:main"
 spidershield-server = "spidershield.server:run"

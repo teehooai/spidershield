@@ -225,8 +225,8 @@ def detect_hard_constraints(
         return "critical_vulnerability"
     if tool_count == 0:
         return "no_tools"
-    banned = {"AGPL-3.0", "AGPL-3.0-only", "AGPL-3.0-or-later", "SSPL-1.0", "BSL-1.1"}
-    if license_info and license_info.upper() in {lic.upper() for lic in banned}:
+    from spidershield.scoring_spec import BANNED_LICENSES
+    if license_info and license_info.upper() in {lic.upper() for lic in BANNED_LICENSES}:
         return "license_banned"
     return None
 

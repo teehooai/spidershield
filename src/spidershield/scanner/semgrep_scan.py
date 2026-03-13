@@ -18,6 +18,7 @@ import json
 import logging
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from spidershield.models import SecurityIssue
@@ -27,8 +28,43 @@ logger = logging.getLogger(__name__)
 # Rules live alongside this file
 _RULES_DIR = Path(__file__).parent / "rules"
 
+
+def _find_semgrep() -> str | None:
+    """Locate the semgrep binary.
+
+    Checks PATH first, then candidate directories where pip may have installed
+    the semgrep entry-point script (handles Windows user site-packages and
+    virtual environments where the Scripts dir is not always on PATH).
+    """
+    if found := shutil.which("semgrep"):
+        return found
+
+    import site
+
+    candidate_dirs: list[Path] = [
+        Path(sys.executable).parent,          # system/venv Scripts
+    ]
+    # user site Scripts/bin (e.g. %APPDATA%\Python\Python3xx\Scripts)
+    try:
+        # getusersitepackages() → ...Python3xx/site-packages → sibling Scripts
+        user_site = Path(site.getusersitepackages())
+        candidate_dirs.append(user_site.parent / "Scripts")  # Windows
+        candidate_dirs.append(user_site.parent / "bin")      # Unix
+    except (AttributeError, TypeError):
+        pass
+
+    for scripts in candidate_dirs:
+        for name in ("semgrep.exe", "semgrep", "pysemgrep.exe", "pysemgrep"):
+            candidate = scripts / name
+            if candidate.exists():
+                return str(candidate)
+    return None
+
+
+_SEMGREP_BIN: str | None = _find_semgrep()
+
 # Semgrep binary presence (checked once at import time)
-SEMGREP_AVAILABLE: bool = shutil.which("semgrep") is not None
+SEMGREP_AVAILABLE: bool = _SEMGREP_BIN is not None
 
 # Categories fully replaced by Semgrep (regex disabled for these when Semgrep runs)
 SEMGREP_COVERED_CATEGORIES: frozenset[str] = frozenset(
@@ -181,10 +217,17 @@ def run_semgrep(path: Path, timeout: int = 60) -> list[SecurityIssue]:
         logger.warning("Semgrep rules directory not found: %s", _RULES_DIR)
         return []
 
+    # Ensure semgrep's own directory is on PATH so its pysemgrep helper can be found
+    import os
+    env = os.environ.copy()
+    semgrep_dir = str(Path(_SEMGREP_BIN).parent)
+    if semgrep_dir not in env.get("PATH", ""):
+        env["PATH"] = semgrep_dir + os.pathsep + env.get("PATH", "")
+
     try:
         result = subprocess.run(
             [
-                "semgrep",
+                _SEMGREP_BIN,
                 "--json",
                 "--quiet",
                 "--no-git-ignore",
@@ -194,7 +237,10 @@ def run_semgrep(path: Path, timeout: int = 60) -> list[SecurityIssue]:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
+            env=env,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("Semgrep scan failed: %s", exc)

@@ -267,9 +267,39 @@ class DLPEngine:
         return str(output) if output is not None else ""
 
     def _replace_text(self, output: Any, modified_text: str) -> Any:
-        """Replace text in the original output structure."""
+        """Replace text in the original output structure.
+
+        For dict/list outputs, re-detect and apply action per-value so the
+        original structure is preserved.
+        """
         if isinstance(output, str):
             return modified_text
-        # For non-string outputs, return the modified text as-is
-        # (the caller can decide how to handle structured output)
+        if isinstance(output, dict):
+            result = dict(output)
+            for k, v in output.items():
+                if isinstance(v, str) and v:
+                    per_val = self._detect_all(v)
+                    if per_val:
+                        if self._action == DLPAction.REDACT:
+                            result[k] = self._apply_redact(v, per_val)
+                        elif self._action == DLPAction.MASK:
+                            result[k] = self._apply_mask(v, per_val)
+            return result
+        if isinstance(output, list):
+            result_list = []
+            for item in output:
+                if isinstance(item, str) and item:
+                    per_item = self._detect_all(item)
+                    if per_item:
+                        if self._action == DLPAction.REDACT:
+                            result_list.append(self._apply_redact(item, per_item))
+                        elif self._action == DLPAction.MASK:
+                            result_list.append(self._apply_mask(item, per_item))
+                        else:
+                            result_list.append(item)
+                    else:
+                        result_list.append(item)
+                else:
+                    result_list.append(item)
+            return result_list
         return modified_text

@@ -122,29 +122,29 @@ class ToxicFlow:
     sinks: list[str]
 
 
+def _match_keywords(
+    content: str, keywords: list[tuple[str, str]],
+) -> list[str]:
+    """Match keyword patterns against content, returning unique labels."""
+    matched: list[str] = []
+    seen: set[str] = set()
+    for pattern, label in keywords:
+        if label not in seen and re.search(pattern, content, re.IGNORECASE):
+            matched.append(label)
+            seen.add(label)
+    return matched
+
+
 def classify_capabilities(content: str) -> FlowClassification:
     """Classify a skill's capabilities from its SKILL.md content.
 
     Returns a FlowClassification with matched capability keywords.
     """
-    result = FlowClassification()
-
-    for pattern, label in DATA_SOURCE_KEYWORDS:
-        if re.search(pattern, content, re.IGNORECASE):
-            if label not in result.data_sources:
-                result.data_sources.append(label)
-
-    for pattern, label in PUBLIC_SINK_KEYWORDS:
-        if re.search(pattern, content, re.IGNORECASE):
-            if label not in result.public_sinks:
-                result.public_sinks.append(label)
-
-    for pattern, label in DESTRUCTIVE_KEYWORDS:
-        if re.search(pattern, content, re.IGNORECASE):
-            if label not in result.destructive:
-                result.destructive.append(label)
-
-    return result
+    return FlowClassification(
+        data_sources=_match_keywords(content, DATA_SOURCE_KEYWORDS),
+        public_sinks=_match_keywords(content, PUBLIC_SINK_KEYWORDS),
+        destructive=_match_keywords(content, DESTRUCTIVE_KEYWORDS),
+    )
 
 
 def detect_toxic_flows(content: str) -> list[ToxicFlow]:

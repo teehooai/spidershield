@@ -1,0 +1,25 @@
+# SpiderShield Code Owners
+# These owners will be automatically requested for review on PRs.
+
+# Global fallback
+* @teehooai/spidershield-maintainers
+
+# Core scanner pipeline
+src/spidershield/scanner/   @teehooai/spidershield-maintainers
+src/spidershield/scoring_spec.py @teehooai/spidershield-maintainers
+
+# Runtime guard + DLP (security-critical)
+src/spidershield/guard/     @teehooai/spidershield-maintainers
+src/spidershield/dlp/       @teehooai/spidershield-maintainers
+src/spidershield/adapters/  @teehooai/spidershield-maintainers
+
+# Agent security
+src/spidershield/agent/     @teehooai/spidershield-maintainers
+
+# CI/CD and release
+.github/                    @teehooai/spidershield-maintainers
+pyproject.toml              @teehooai/spidershield-maintainers
+
+# Documentation
+docs/                       @teehooai/spidershield-maintainers
+*.md                        @teehooai/spidershield-maintainers

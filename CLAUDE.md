@@ -8,7 +8,8 @@ Think "npm audit for MCP tools".
 ## Architecture
 ```
 src/spidershield/
-  cli.py              -- Click CLI (scan, rewrite, harden, eval, dataset)
+  cli.py              -- Click CLI entry point (thin orchestrator)
+  commands/            -- CLI command modules (scan, rewrite, harden, eval, agent, dataset, guard, policy, audit)
   models.py            -- Pydantic V2 models (ScanReport, SecurityIssue, etc.)
   server.py            -- MCP server mode (scan_mcp_server tool)
   spiderrating.py      -- SpiderRating format conversion (metadata, grades)
@@ -115,7 +116,7 @@ Before submitting a PR to any external MCP repo, ALL 5 gates must pass:
 | Add security pattern | scanner/security_scan.py (DANGEROUS_PATTERNS dict) |
 | Add description criterion | scanner/description_quality.py + models.py (ToolDescriptionScore) |
 | Change scoring weights | scanner/description_quality.py (line ~90-108) |
-| Add tool extraction pattern | scanner/description_quality.py (_extract_tools) |
+| Add tool extraction pattern | scanner/description_quality.py (_extract_python_tools, _extract_ts_tools, etc.) |
 | Change report output | scanner/runner.py (_print_table) |
 | SpiderRating conversion (MCP) | spiderrating.py (convert, metadata scoring) |
 | SpiderRating conversion (Skill) | spiderrating.py (convert_skill, score_skill_description) |
@@ -124,6 +125,7 @@ Before submitting a PR to any external MCP repo, ALL 5 gates must pass:
 | Toxic flow detection | agent/toxic_flow.py (keyword + AST) |
 | LLM rewrite cache | rewriter/cache.py (~/.spidershield/rewrite-cache/) |
 | Dataset schema/migration | dataset/db.py (SCHEMA_VERSION, _migrate_vN) |
-| Add benchmark server | cli.py (dataset benchmark-add/list/run) |
-| Label calibration data | cli.py (dataset calibrate/calibrate-report) |
-| Add CLI command | cli.py |
+| Add benchmark server | commands/dataset.py (dataset benchmark-add/list/run) |
+| Label calibration data | commands/dataset.py (dataset calibrate/calibrate-report) |
+| Add CLI command | commands/<module>.py + register in commands/__init__.py + cli.py |
+| Banned license policy | scoring_spec.py (BANNED_LICENSES) + docs/decisions/banned-licenses.md |

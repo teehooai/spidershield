@@ -92,8 +92,8 @@ def run_scan_report(target: str, tools_json: str | None = None) -> ScanReport:
     elif len(tool_names) == 0:
         hard_constraint = "no_tools"
     else:
-        banned = {"AGPL-3.0", "AGPL-3.0-only", "AGPL-3.0-or-later", "SSPL-1.0", "BSL-1.1"}
-        if license_info and license_info.upper() in {lic.upper() for lic in banned}:
+        from spidershield.scoring_spec import BANNED_LICENSES
+        if license_info and license_info.upper() in {lic.upper() for lic in BANNED_LICENSES}:
             hard_constraint = "license_banned"
 
     # Grade from scoring spec (hard constraints handled locally for CLI)

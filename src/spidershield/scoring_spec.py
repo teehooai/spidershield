@@ -74,6 +74,18 @@ SEVERITY_PENALTIES: dict[str, float] = {
 ARCHITECTURE_BONUS_MAX = 2.0
 
 # ---------------------------------------------------------------------------
+# Banned Licenses (single source of truth)
+# ---------------------------------------------------------------------------
+
+BANNED_LICENSES: frozenset[str] = frozenset({
+    "AGPL-3.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+    "SSPL-1.0",
+    "BSL-1.1",
+})
+
+# ---------------------------------------------------------------------------
 # Default Layer Weights (MCP servers — the public default)
 # ---------------------------------------------------------------------------
 

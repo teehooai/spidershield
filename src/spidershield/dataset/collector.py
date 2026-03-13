@@ -7,6 +7,7 @@ because of dataset recording).
 
 from __future__ import annotations
 
+import functools
 import logging
 from pathlib import Path
 
@@ -17,14 +18,13 @@ logger = logging.getLogger(__name__)
 
 def _safe_record(func):
     """Decorator: swallow all exceptions so dataset recording never breaks core ops."""
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as e:
             logger.debug("Dataset recording failed: %s", e)
             return None
-    wrapper.__name__ = func.__name__
-    wrapper.__doc__ = func.__doc__
     return wrapper
 
 

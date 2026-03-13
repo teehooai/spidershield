@@ -23,6 +23,22 @@ jobs:
       - name: Lint
         run: ruff check src/ tests/
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]" pyright
+
+      - name: Type check
+        run: pyright src/spidershield/
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -41,7 +57,7 @@ jobs:
         run: pip install -e ".[dev]" pytest-cov
 
       - name: Run tests with coverage
-        run: pytest tests/ -v --cov=spidershield --cov-report=term-missing --cov-fail-under=60
+        run: pytest tests/ -v --cov=spidershield --cov-report=term-missing --cov-fail-under=75
 
       - name: Verify CLI
         run: spidershield --version

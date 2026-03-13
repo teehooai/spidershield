@@ -270,6 +270,40 @@ def _is_under(file_path: Path, dir_path: Path) -> bool:
         return False
 
 
+_EXCLUDE_DIRS = frozenset({
+    "node_modules", "__pycache__", "__tests__", "tests", "test",
+    ".git", "dist", "build", ".venv", "venv", ".tox",
+    ".mypy_cache", "examples", "example",
+    # S3 scope limiting: exclude benchmarks, fixtures, vendor, docs
+    "benchmarks", "benchmark", "fixtures", "fixture",
+    "vendor", "third_party", "third-party", "external",
+    "docs", "doc", "documentation",
+    "spec", "e2e", "integration_tests",
+    ".next", ".nuxt", ".cache", "coverage",
+    # Dev tooling: setup/migration/seed scripts are not MCP tool code
+    "scripts", "migrations", "migration", "seeds", "seed",
+})
+
+
+def _is_excluded_file(rel_path: str) -> bool:
+    """Check if a relative path should be excluded from security scanning."""
+    parts = Path(rel_path).parts
+    if any(part in _EXCLUDE_DIRS for part in parts):
+        return True
+    name = Path(rel_path).name
+    return (
+        name.startswith("test_")
+        or name.endswith(".test.ts")
+        or name.endswith(".test.js")
+        or name.endswith(".spec.ts")
+        or name.endswith(".spec.js")
+        or name.endswith(".d.ts")
+        or name.endswith(".min.js")
+        or name.startswith("_test.")
+        or name.endswith("_test.go")
+    )
+
+
 def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     """Scan for security issues in Python and TypeScript files.
 
@@ -281,29 +315,17 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     issues: list[SecurityIssue] = []
 
     # --- Semgrep pass (AST-aware, higher precision) ---
+    # Semgrep results are collected here but added to issues AFTER scoping,
+    # so they respect the same exclusion and monorepo rules as regex.
     semgrep_issues: list[SecurityIssue] = []
     if SEMGREP_AVAILABLE:
         semgrep_issues = run_semgrep(path)
-        issues.extend(semgrep_issues)
+        semgrep_issues = [i for i in semgrep_issues if not _is_excluded_file(i.file)]
 
     source_files = list(path.rglob("*.py")) + list(path.rglob("*.ts")) + list(path.rglob("*.js"))
-    # Exclude non-source directories from security scanning
-    exclude_dirs = {
-        "node_modules", "__pycache__", "__tests__", "tests", "test",
-        ".git", "dist", "build", ".venv", "venv", ".tox",
-        ".mypy_cache", "examples", "example",
-        # S3 scope limiting: exclude benchmarks, fixtures, vendor, docs
-        "benchmarks", "benchmark", "fixtures", "fixture",
-        "vendor", "third_party", "third-party", "external",
-        "docs", "doc", "documentation",
-        "spec", "e2e", "integration_tests",
-        ".next", ".nuxt", ".cache", "coverage",
-        # Dev tooling: setup/migration/seed scripts are not MCP tool code
-        "scripts", "migrations", "migration", "seeds", "seed",
-    }
     source_files = [
         f for f in source_files
-        if not any(part in exclude_dirs for part in f.parts)
+        if not any(part in _EXCLUDE_DIRS for part in f.parts)
         and not f.name.startswith("test_")
         and not f.name.endswith(".test.ts")
         and not f.name.endswith(".test.js")
@@ -319,6 +341,15 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     # limit scanning to only that directory to avoid false positives from
     # unrelated framework code (e.g. entire Stripe SDK, Vercel AI SDK)
     source_files = _scope_to_mcp_dir(path, source_files)
+
+    # Apply monorepo scoping to Semgrep results as well
+    if semgrep_issues and source_files:
+        scoped_dirs = {f.relative_to(path).parts[0] for f in source_files if f.relative_to(path).parts}
+        semgrep_issues = [
+            i for i in semgrep_issues
+            if not Path(i.file).parts or Path(i.file).parts[0] in scoped_dirs
+        ]
+    issues.extend(semgrep_issues)
 
     for source_file in source_files:
         try:

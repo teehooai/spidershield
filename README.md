@@ -24,7 +24,30 @@ SpiderShield is a 5-subsystem security toolkit:
 pip install spidershield
 ```
 
-Requires Python 3.11+.
+Requires Python 3.11+. See [SUPPORT.md](SUPPORT.md) for version compatibility and optional dependencies.
+
+## 5-Minute Success Path
+
+```bash
+# 1. Install
+pip install spidershield
+
+# 2. Scan any MCP server
+spidershield scan ./your-mcp-server
+
+# 3. See what's wrong and how to fix it
+spidershield rewrite ./your-mcp-server --dry-run
+
+# 4. (Optional) Protect at runtime
+spidershield proxy -- npx server-filesystem /tmp
+```
+
+For contributors:
+
+```bash
+git clone https://github.com/teehooai/spidershield && cd spidershield
+make verify-oss   # One command: install + lint + type check + test + scan
+```
 
 ## Quick Start
 
@@ -303,6 +326,10 @@ Add SpiderShield to your CI pipeline:
 | `spidershield eval <original> <improved>` | Compare tool selection accuracy |
 | `spidershield agent-check [dir]` | Scan an AI agent for security issues |
 | `spidershield agent-pin <cmd>` | Manage skill pins for rug pull detection |
+| `spidershield guard -- <cmd>` | Wrap any subprocess with security guard |
+| `spidershield proxy -- <cmd>` | MCP proxy with policy enforcement |
+| `spidershield policy list\|show\|validate` | Manage security policies |
+| `spidershield audit show\|stats` | View guard audit logs |
 | `spidershield dataset stats` | View data flywheel statistics |
 | `spidershield dataset benchmark-add` | Add a benchmark entry |
 | `spidershield dataset benchmark-run` | Re-run benchmarks |
