@@ -94,8 +94,18 @@ def score_descriptions(
         desc = tool.get("description", "")
 
         # 1. Action verb: description starts with a verb (imperative mood)
-        first_word = desc.split()[0].lower().rstrip("s") if desc.strip() else ""
-        has_action_verb = first_word in _ACTION_VERBS or first_word.rstrip("e") in _ACTION_VERBS
+        # Use proper suffix stripping (not rstrip which strips characters)
+        raw_word = desc.split()[0].lower() if desc.strip() else ""
+        stems = {raw_word}
+        if raw_word.endswith("es"):
+            stems.add(raw_word[:-2])  # "processes" -> "process"
+            stems.add(raw_word[:-1])  # "configures" -> "configure"
+        elif raw_word.endswith("s"):
+            stems.add(raw_word[:-1])  # "deletes" -> "delete"
+        if raw_word.endswith("ing"):
+            stems.add(raw_word[:-3])  # "creating" -> "creat" (won't match, harmless)
+            stems.add(raw_word[:-3] + "e")  # "creating" -> "create"
+        has_action_verb = bool(stems & set(_ACTION_VERBS))
 
         # 2. Scenario trigger: "Use when..." / "Use for..." / "Call this..."
         has_scenario = bool(re.search(r"(?:use (?:this )?when|use for|call this)", desc, re.I))
@@ -104,9 +114,14 @@ def score_descriptions(
         has_examples = bool(re.search(r"(?:e\.g\.|example|for instance|such as|like )", desc, re.I))
 
         # 4. Error guidance: failure modes and troubleshooting
+        # Require context words like "if", "when", "returns", "throws" near
+        # error keywords, or explicit phrases like "fails with", "error if"
         error_pat = (
-            r"(?:error|fail|common issue|if .* fails"
-            r"|troubleshoot|raise|exception|invalid)"
+            r"(?:fails?\s+(?:with|if|when|on)"
+            r"|error\s+(?:if|when|code|message)"
+            r"|(?:if|when)\s+.*(?:fail|invalid|error|not found)"
+            r"|(?:raise|throw)s?\s+\w*(?:Error|Exception)"
+            r"|common\s+issue|troubleshoot)"
         )
         has_error_guidance = bool(re.search(error_pat, desc, re.I))
 
@@ -114,7 +129,11 @@ def score_descriptions(
         has_param_docs = bool(re.search(
             r"(?:param(?:eter)?s?|input|argument|accepts?|takes?|requires?|expects?)\s*[:.]",
             desc, re.I,
-        )) or bool(re.search(r"`\w+`", desc)) or bool(  # backtick-quoted param names
+        )) or bool(
+            # Backtick-quoted param names: require snake_case or lowercase
+            # to avoid matching technology names like `Redis`, `PostgreSQL`
+            re.search(r"`[a-z][a-z0-9_]*`", desc)
+        ) or bool(
             re.search(r"--\w+", desc)  # CLI-style --flag params
         )
 
@@ -128,7 +147,8 @@ def score_descriptions(
         has_return_docs = bool(re.search(return_pat, desc, re.I))
 
         # 6. Disambiguation: specificity vs other tools (using content words only)
-        disambiguation = 1.0
+        # Single-tool servers get partial credit (no disambiguation needed)
+        disambiguation = 0.5 if len(tools) == 1 else 1.0
         for other in tools:
             if other["name"] != name:
                 other_desc = other.get("description", "")
@@ -203,7 +223,7 @@ def _extract_fastmcp_kwarg_tools(content: str) -> list[dict]:
     tools: list[dict] = []
     # Find all @<name>.tool( positions
     dec_pat = re.compile(r'@(?:mcp|server|app|fastmcp)\.tool\(')
-    desc_pat = re.compile(r'description\s*=\s*(?:"([^"]*?)"|\'([^\']*?)\'|"""(.*?)""")', re.DOTALL)
+    desc_pat = re.compile(r'description\s*=\s*(?:"""(.*?)"""|\'\'\'(.*?)\'\'\'|"([^"]*?)"|\'([^\']*?)\')', re.DOTALL)
     def_pat = re.compile(r'(?:async\s+)?def\s+(\w+)')
 
     for dec_match in dec_pat.finditer(content):
@@ -225,7 +245,7 @@ def _extract_fastmcp_kwarg_tools(content: str) -> list[dict]:
         dm = desc_pat.search(dec_body)
         if dm is None:
             continue
-        desc = (dm.group(1) or dm.group(2) or dm.group(3) or "").strip()
+        desc = (dm.group(1) or dm.group(2) or dm.group(3) or dm.group(4) or "").strip()
 
         # Look for 'def func_name' in the next ~100 chars after the decorator close
         after_dec = content[i:i + 100]
@@ -283,8 +303,10 @@ def _extract_python_tools(path: Path, tools: list[dict], seen: set[str]) -> None
             continue
 
         # FastMCP style: @mcp.tool() or @server.tool() with description in docstring
+        # Match from decorator through def name, then skip to the docstring.
+        # Avoids [^)]* which breaks on type annotations like tuple[int, int].
         for match in re.finditer(
-            r'@(?:mcp|server|app)\.tool\(?\)?\s*(?:async\s+)?def\s+(\w+)\s*\([^)]*\).*?"""(.*?)"""',
+            r'@(?:mcp|server|app)\.tool\(?\)?\s*(?:async\s+)?def\s+(\w+)[^"\']*?"""(.*?)"""',
             content,
             re.DOTALL,
         ):
@@ -443,11 +465,11 @@ def _extract_go_tools(path: Path, tools: list[dict], seen: set[str]) -> None:
             continue
 
         # mcp.NewTool("name", mcp.WithDescription("..."))
+        # Use {0,500} instead of .*? to avoid crossing into adjacent NewTool calls
         for match in re.finditer(
             r'mcp\.NewTool\(\s*["\']([a-zA-Z_][\w-]*)["\']'
-            r'.*?(?:WithDescription|mcp\.WithDescription)\(\s*["\']([^"\']+)["\']',
+            r'[\s\S]{0,500}?(?:WithDescription|mcp\.WithDescription)\(\s*["\']([^"\']+)["\']',
             content,
-            re.DOTALL,
         ):
             _add_tool(tools, seen, match.group(1), match.group(2).strip())
 

@@ -40,11 +40,10 @@ DANGEROUS_PATTERNS = {
             r"os\.popen\(\s*(?![\"'])",
             r"os\.popen\(\s*f[\"']",
             # shell=True with variable/f-string command (not hardcoded)
-            # [\s\S] crosses newlines for multi-line calls like:
-            #   subprocess.run(cmd,
-            #       shell=True)
-            r"subprocess\.(?:call|run|Popen)\(\s*f[\"'][\s\S]{0,200}shell\s*=\s*True",
-            r"subprocess\.(?:call|run|Popen)\(\s*\w+[\s\S]{0,200}shell\s*=\s*True",
+            # [\s\S] crosses newlines for multi-line calls.
+            # Reject matches that cross into another subprocess call.
+            r"subprocess\.(?:call|run|Popen)\(\s*f[\"'](?:(?!subprocess\.).[\s\S]){0,200}shell\s*=\s*True",
+            r"subprocess\.(?:call|run|Popen)\(\s*\w+(?:(?!subprocess\.).[\s\S]){0,200}shell\s*=\s*True",
         ],
         "severity": "critical",
         "description": "Potential command injection -- user input may be executed as shell command",
@@ -131,8 +130,9 @@ DANGEROUS_PATTERNS = {
         "patterns": [
             # Only flag MCP tool handler functions that take raw string params
             # (functions decorated with @tool, @server.tool, or named call_tool/handle)
-            r"@(?:mcp|server|app)\.tool\b.*\n\s*(?:async\s+)?def\s+\w+\(.*:\s*str[,\)]",
-            r"@tool\b.*\n\s*(?:async\s+)?def\s+\w+\(.*:\s*str[,\)]",
+            # Use [\s\S]{0,300} to match multi-line function signatures
+            r"@(?:mcp|server|app)\.tool\b[\s\S]{0,300}?:\s*str\s*[,\)=]",
+            r"@tool\b[\s\S]{0,300}?:\s*str\s*[,\)=]",
         ],
         "severity": "low",
         "description": "MCP tool handler accepts raw string input without validation",
@@ -188,8 +188,8 @@ DANGEROUS_PATTERNS = {
 TS_DANGEROUS_PATTERNS = {
     "prototype_pollution": {
         "patterns": [
-            # Object.assign with user input, deep merge without protection
-            r"Object\.assign\(\s*\{\s*\}\s*,",
+            # Object.assign to existing object (not safe shallow-copy to {})
+            r"Object\.assign\(\s*(?!\{\s*\})\w+\s*,",
             # Only flag dynamic property assignment from raw user input
             # (not this.map[id]=value which is controlled)
             r"(?<!\w)\w+\[(?:input|params|args|body|query|req)\[\w+\]\]\s*=",
@@ -503,7 +503,7 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
                 continue
             if SEMGREP_AVAILABLE and category in SEMGREP_COVERED_CATEGORIES:
                 continue  # Semgrep handles this category with higher precision
-            flags = re.IGNORECASE if category != "sql_injection" else 0
+            flags = re.IGNORECASE
             for pattern in config["patterns"]:
                 # Patterns using ^ need MULTILINE to match per-line
                 pat_flags = flags | re.MULTILINE if pattern.startswith("^") else flags

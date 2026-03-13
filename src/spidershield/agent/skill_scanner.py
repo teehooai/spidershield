@@ -99,9 +99,9 @@ MALICIOUS_PATTERNS: list[tuple[str, str, str, str]] = [
     # Pattern 10: Environment variable exfiltration
     (
         "env_exfiltration",
-        r"(process\.env|os\.environ|printenv|export\s+\$).*"
+        r"(process\.env|os\.environ|printenv|export\s+\$)[\s\S]{0,500}"
         r"(curl|wget|fetch|send\b|post\b|pastebin)|"
-        r"(curl|wget)\b.*\$\(?(printenv|env\b|os\.environ)",
+        r"(curl|wget)\b[\s\S]{0,500}\$\(?(printenv|env\b|os\.environ)",
         "malicious",
         "Environment variables sent to external endpoint",
     ),
@@ -143,7 +143,7 @@ MALICIOUS_PATTERNS: list[tuple[str, str, str, str]] = [
     # Pattern 16: eval/exec with remote content
     (
         "remote_code_exec",
-        r"(eval\s*\$?\(|exec\s*\().*("
+        r"(eval\s*\$?\(|exec\s*\()[\s\S]{0,300}("
         r"base64|curl|wget|urllib|requests\.get|fetch|download)",
         "malicious",
         "Dynamic code execution with remote content",
@@ -279,7 +279,7 @@ def scan_single_skill(
     for name, pattern, severity, description in MALICIOUS_PATTERNS:
         if name in ignored:
             continue
-        if re.search(pattern, content, re.IGNORECASE | re.DOTALL):
+        if re.search(pattern, content, re.IGNORECASE):
             code = get_issue_code(name)
             prefix = f"[{code}] " if code else ""
             issues.append(f"{prefix}{description}")

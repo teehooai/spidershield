@@ -26,14 +26,19 @@ def resolve_target(target: str) -> Path:
         return path
 
     if target.startswith(("http://", "https://", "git@", "github.com")):
+        import atexit
+        import shutil
         import subprocess
         import tempfile
 
         repo_name = target.split("/")[-1].replace(".git", "")
-        clone_dir = Path(tempfile.mkdtemp(prefix="spidershield_")) / repo_name
+        tmp_parent = Path(tempfile.mkdtemp(prefix="spidershield_"))
+        clone_dir = tmp_parent / repo_name
+        # Clean up cloned repo on exit
+        atexit.register(shutil.rmtree, str(tmp_parent), True)
         try:
             subprocess.run(
-                ["git", "clone", "--depth", "1", target, str(clone_dir)],
+                ["git", "clone", "--depth", "1", "--", target, str(clone_dir)],
                 check=True,
                 capture_output=True,
             )

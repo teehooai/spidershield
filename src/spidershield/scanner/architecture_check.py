@@ -65,7 +65,7 @@ def _score_tests(path: Path) -> tuple[float, bool]:
     for pattern in test_patterns:
         test_file_count += len([
             f for f in path.rglob(pattern)
-            if not any(part in _SKIP_DIRS for part in f.parts)
+            if not any(part in _SKIP_DIRS for part in f.relative_to(path).parts)
         ])
 
     # Also check for test directories with files inside
@@ -73,7 +73,11 @@ def _score_tests(path: Path) -> tuple[float, bool]:
         for dirname in test_dirs:
             test_dir = path / dirname
             if test_dir.exists() and test_dir.is_dir():
-                test_file_count += len(list(test_dir.rglob("*")))
+                test_file_count += len([
+                    f for f in test_dir.rglob("*")
+                    if f.is_file() and f.suffix in (".py", ".ts", ".js", ".go")
+                    and f.name not in ("__init__.py", "conftest.py")
+                ])
                 break
 
     if test_file_count == 0:
@@ -150,8 +154,8 @@ def _score_type_hints(path: Path, source_files: list[Path]) -> float:
     py_files = [f for f in source_files if f.suffix == ".py"]
     ts_files = [f for f in source_files if f.suffix == ".ts"]
 
-    # TypeScript is inherently typed
-    if ts_files:
+    # Pure TypeScript projects get full score (inherently typed)
+    if ts_files and not py_files:
         return 1.5
 
     if not py_files:
@@ -164,7 +168,7 @@ def _score_type_hints(path: Path, source_files: list[Path]) -> float:
         except OSError:
             continue
         # Check for return type annotations or parameter annotations
-        has_return = re.search(r"def \w+\(.*\)\s*->", content)
+        has_return = re.search(r"def \w+\([\s\S]*?\)\s*->", content)
         has_type = re.search(
             r":\s*(?:str|int|float|bool|list|dict|tuple|Path|Optional)\b",
             content,

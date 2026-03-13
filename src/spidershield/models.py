@@ -33,9 +33,9 @@ class ToolDescriptionScore(BaseModel):
 
     tool_name: str
     has_action_verb: bool = Field(default=False, description="Starts with an action verb")
-    has_scenario_trigger: bool = Field(description="Contains 'Use when...' guidance")
-    has_param_examples: bool
-    has_error_guidance: bool
+    has_scenario_trigger: bool = Field(default=False, description="Contains 'Use when...' guidance")
+    has_param_examples: bool = Field(default=False, description="Contains concrete parameter examples")
+    has_error_guidance: bool = Field(default=False, description="Contains error/failure mode guidance")
     has_param_docs: bool = Field(default=False, description="Documents parameters/inputs")
     has_return_docs: bool = Field(default=False, description="Documents return value or output format")
     disambiguation_score: float = Field(ge=0, le=1, description="How distinct from other tools")

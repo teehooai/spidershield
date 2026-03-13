@@ -449,6 +449,18 @@ def run_rewrite(
             skipped += 1
         rewritten = gate_result.description
 
+        # Sanitize LLM output: reject rewrites containing unbalanced quotes
+        # or control characters that could break source file syntax.
+        if rewritten != original:
+            if (rewritten.count('"') % 2 != 0
+                    or rewritten.count("'") % 2 != 0
+                    or any(c in rewritten for c in ('\x00', '\r'))):
+                console.print(
+                    f"[yellow]Sanitizer rejected rewrite for {tool['name']}[/yellow]"
+                )
+                rewritten = original
+                skipped += 1
+
         results.append({
             "name": tool["name"],
             "original": original,
@@ -657,8 +669,24 @@ def _apply_rewrites(path: Path, results: list[dict]) -> int:
             else:
                 if old_desc not in content:
                     continue
-                # Replace the description in the file
-                content = content.replace(old_desc, new_desc, 1)
+                # Targeted replacement: prefer replacing within a definition
+                # context (near tool name, description=, or docstring) to
+                # avoid hitting duplicates in comments or tests.
+                escaped = re.escape(old_desc)
+                # Try contextual match first: description near tool_name or
+                # description= keyword within 200 chars
+                ctx_pat = re.compile(
+                    r'(?:' + re.escape(tool_name) + r'[\s\S]{0,200}?|description\s*=\s*["\']?)'
+                    + escaped,
+                )
+                ctx_match = ctx_pat.search(content)
+                if ctx_match:
+                    # Replace only the old_desc portion within the match
+                    start = ctx_match.end() - len(old_desc)
+                    content = content[:start] + new_desc + content[start + len(old_desc):]
+                else:
+                    # Fallback to first occurrence
+                    content = content.replace(old_desc, new_desc, 1)
             if content != original_content:
                 modified = True
                 applied += 1
@@ -668,6 +696,12 @@ def _apply_rewrites(path: Path, results: list[dict]) -> int:
                 original_content = content
 
         if modified:
+            # G0#2: backup original before writing to prevent data loss
+            backup_path = source_file.with_suffix(source_file.suffix + ".bak")
+            try:
+                backup_path.write_text(source_file.read_text(errors="ignore"))
+            except OSError:
+                pass  # best-effort backup; don't block rewrite
             source_file.write_text(content)
 
     return applied

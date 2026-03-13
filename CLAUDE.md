@@ -62,8 +62,8 @@ SpiderShield uses evidence-driven evolution (see docs/internal/001-audit-quality
 - Description scorer: Score must correlate with actual LLM tool selection success.
 - Architecture checker: Gradual scoring preferred over binary pass/fail.
 - Overall score: SpiderRating formula `descriptions*0.35 + security_adjusted*0.35 + architecture*0.30`.
-- Architecture bonus: `min(3.0, arch_score * 0.3)` folds into security_adjusted.
-- Grade scale: F/D/C/B/A (thresholds: 3.0/5.0/7.0/8.5).
+- Architecture bonus: `min(2.0, arch_score / 5.0)` folds into security_adjusted.
+- Grade scale: F/D/C/B/A (thresholds: 3.0/5.0/7.0/9.0).
 - Hard constraints: critical→F, no_tools→F, license_banned→D cap.
 
 ### Scoring Calibration
