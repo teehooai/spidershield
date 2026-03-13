@@ -40,8 +40,11 @@ DANGEROUS_PATTERNS = {
             r"os\.popen\(\s*(?![\"'])",
             r"os\.popen\(\s*f[\"']",
             # shell=True with variable/f-string command (not hardcoded)
-            r"subprocess\.(?:call|run|Popen)\(\s*f[\"'].*shell\s*=\s*True",
-            r"subprocess\.(?:call|run|Popen)\(\s*\w+.*shell\s*=\s*True",
+            # [\s\S] crosses newlines for multi-line calls like:
+            #   subprocess.run(cmd,
+            #       shell=True)
+            r"subprocess\.(?:call|run|Popen)\(\s*f[\"'][\s\S]{0,200}shell\s*=\s*True",
+            r"subprocess\.(?:call|run|Popen)\(\s*\w+[\s\S]{0,200}shell\s*=\s*True",
         ],
         "severity": "critical",
         "description": "Potential command injection -- user input may be executed as shell command",
@@ -363,32 +366,57 @@ def _is_excluded_file(rel_path: str) -> bool:
 def _get_function_body(content: str, start: int, max_lines: int = 30) -> str:
     """Extract the body of a Python function starting after the def line.
 
-    Returns up to *max_lines* lines of the function body (indented block).
+    *start* points just past the regex match (end of ``def f(x: str)``).
+    We skip the remainder of the signature, any docstring, then collect
+    up to *max_lines* of the indented body.
     """
     lines = content[start:].split("\n")
     body_lines: list[str] = []
-    in_body = False
     body_indent = 0
+    in_docstring = False
+    past_preamble = False  # True once we've passed docstring / def tail
+
     for line in lines:
         stripped = line.lstrip()
-        if not in_body:
-            # Skip the rest of the def line, docstring, etc. until we hit body
-            if stripped.startswith(('"""', "'''")):
-                in_body = True
+
+        # --- skip inside multi-line docstring ---
+        if in_docstring:
+            if '"""' in stripped or "'''" in stripped:
+                in_docstring = False
+            continue
+
+        # --- skip blank / comment / trailing def lines before body ---
+        if not past_preamble:
+            if not stripped or stripped.startswith("#"):
                 continue
-            if stripped and not stripped.startswith(("#", '"""', "'''")):
-                in_body = True
+            # Detect docstring start
+            for quote in ('"""', "'''"):
+                if stripped.startswith(quote):
+                    # Single-line docstring: opening and closing on same line
+                    if stripped.count(quote) >= 2:
+                        # e.g. """Some doc."""  — skip entire line
+                        pass
+                    else:
+                        in_docstring = True
+                    break
+            else:
+                # First real code line — start collecting body
+                past_preamble = True
                 body_indent = len(line) - len(stripped)
-        if in_body:
-            if stripped == "":
-                body_lines.append("")
+            if not past_preamble:
                 continue
-            current_indent = len(line) - len(stripped)
-            if current_indent < body_indent and stripped:
-                break  # dedent = end of function
-            body_lines.append(stripped)
-            if len(body_lines) >= max_lines:
-                break
+
+        # --- collect body lines ---
+        if stripped == "":
+            body_lines.append("")
+            continue
+        current_indent = len(line) - len(stripped)
+        if current_indent < body_indent:
+            break  # dedent = end of function
+        body_lines.append(stripped)
+        if len(body_lines) >= max_lines:
+            break
+
     return "\n".join(body_lines)
 
 
@@ -477,7 +505,9 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
                 continue  # Semgrep handles this category with higher precision
             flags = re.IGNORECASE if category != "sql_injection" else 0
             for pattern in config["patterns"]:
-                for match in re.finditer(pattern, content, flags):
+                # Patterns using ^ need MULTILINE to match per-line
+                pat_flags = flags | re.MULTILINE if pattern.startswith("^") else flags
+                for match in re.finditer(pattern, content, pat_flags):
                     line_num = content[:match.start()].count("\n") + 1
                     # For no_input_validation: suppress if function body
                     # contains validation (len check, validate call, raise,

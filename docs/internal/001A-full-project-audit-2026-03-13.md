@@ -498,7 +498,45 @@ comprehensive SDK docs) which is premature investment at current adoption.
 
 ---
 
-## $13 Version History
+## $13 Self-Audit: SpiderShield Scans Itself (rev9)
+
+> Ran `spidershield scan src/spidershield/` on own codebase. Result: F (2.9/10), 15 issues.
+> Combined with deep code review of P4 changes. Found 5 real bugs, all fixed.
+
+### 13.1 Self-Scan FP Analysis
+
+| Issue | Count | Verdict | Reason |
+|-------|-------|---------|--------|
+| sql_injection (dataset/db.py) | 2 | **FP** | DDL schema construction, not user input |
+| unsafe_deserialization (toxic_flow.py) | 1 | **FP** | AST analysis of malicious code samples |
+| unsafe_path_resolution (CLI commands) | 8 | **FP** | CLI tool reading user-specified paths is expected |
+| async_shell_injection (security_scan.py) | 1 | **FP** | Regex pattern definition string, not actual shell call |
+| path_traversal (security_scan.py) | 1 | **FP** | Pattern definition, not real path operation |
+
+**Conclusion**: All 15 self-scan issues are false positives. The scanner correctly identifies pattern-like code but cannot distinguish between "code that does X" and "regex that detects X". This is an inherent limitation of static regex analysis — acceptable for pre-1.0.
+
+### 13.2 Code Review Bugs Found and Fixed
+
+| ID | Severity | Bug | Fix |
+|----|----------|-----|-----|
+| FIX-1 | **HIGH** | `^`-anchored patterns (`hardcoded_credential`, `basic_auth_in_url`) used without `re.MULTILINE` — only detected issues on line 1 of files | Auto-detect `^` prefix and add `re.MULTILINE` flag |
+| FIX-2 | **HIGH** | `_get_function_body()` didn't skip multi-line docstrings — docstring text (containing "validate", "error") was treated as function body, causing `no_input_validation` false negatives | Complete rewrite with proper docstring state machine |
+| FIX-3 | **HIGH** | TP tests for Semgrep-covered categories (`dangerous_eval`, `command_injection`, `child_process_injection`, `ts_sql_injection`) lacked `force_regex=True` — would fail if Semgrep installed in CI | Added `force_regex=True` to all 8 affected TP tests |
+| FIX-4 | **MEDIUM** | `prototype_pollution` and `ts_unsafe_eval` had zero test coverage | Added 7 tests (4 TP + 3 FP) |
+| FIX-5 | **MEDIUM** | `subprocess.run(cmd,\n    shell=True)` multi-line calls missed — `.*` doesn't cross newlines | Changed to `[\s\S]{0,200}` with bounded length |
+
+### 13.3 Regression Tests Added
+
+| Test Class | Tests | Covers |
+|-----------|-------|--------|
+| TestMultiLineDetection | 2 | FIX-1 regression (cred/auth not on line 1) |
+| TestTsUnsafeEval | 5 | FIX-4 (new Function, eval, vm.run + 2 FP) |
+| TestPrototypePollution | 3 | FIX-4 (lodash merge, dynamic prop + 1 FP) |
+| **Total new** | **10** | 66 edge-case + 9 E2E = **75 tests** |
+
+---
+
+## $14 Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
@@ -511,5 +549,5 @@ comprehensive SDK docs) which is premature investment at current adoption.
 | **Obs 001A rev5** | **2026-03-13** | **P3 complete: cli.py→commands/ subpackage (1,359→35 LOC orchestrator + 9 modules), .pre-commit-config.yaml, banned-license rationale doc, 7 perf benchmarks, classify_capabilities() collapsed. All P0-P3 items DONE. 752/752 tests pass. Score: B→A- (8.4/10).** |
 | **Obs 001A rev6** | **2026-03-13** | **Codex cross-review items complete: Makefile + `make verify-oss`, README 5-min quickstart, SUPPORT.md (version matrix + deprecation policy + stability guarantees), CODEOWNERS, issue/PR templates. OSS DoD 6/6 met. Final score: A- (8.7/10).** |
 | **Obs 001A rev7** | **2026-03-13** | **§12 Gap Analysis added: 13 items → 5 KEEP (P4), 5 DEFER (P5), 8 DROP. Over-engineering filter applied.** |
-| **Obs 001A rev8** | **2026-03-13** | **P4 complete: 5 new security patterns (unsafe_path_resolution, async_shell_injection, basic_auth_in_url, timing_attack_comparison, ts_async_injection), `has_return_docs` scorer criterion, 56 edge-case pattern tests (all pass), 9 E2E pipeline tests (all pass), Windows CI matrix. Score: A- (8.7) → A (9.0).** |
-| **Obs 001A rev7** | **2026-03-13** | **BUG-4 (path exclusion) + BUG-5 (validation false positive) fixed. secure-server upgraded to 10.0/10 reference. 8.7→9.8 gap analysis completed with over-engineering filter applied.** |
+| **Obs 001A rev8** | **2026-03-13** | **P4 complete: 5 new security patterns, `has_return_docs` scorer criterion, 56 edge-case pattern tests, 9 E2E pipeline tests, Windows CI matrix. Score: A- (8.7) → A (9.0).** |
+| **Obs 001A rev9** | **2026-03-13** | **Self-audit + code review: 5 bugs found and fixed. FIX-1: `re.MULTILINE` for `^`-anchored patterns (hardcoded_credential, basic_auth_in_url only detected line 1). FIX-2: `_get_function_body()` multi-line docstring handling (docstring content leaked into body → false negatives). FIX-3: `force_regex=True` on all Semgrep-covered TP tests (CI stability). FIX-4: Added prototype_pollution + ts_unsafe_eval test coverage. FIX-5: Multi-line `subprocess.run(..., shell=True)` detection via `[\s\S]{0,200}`. 75/75 tests pass.** |

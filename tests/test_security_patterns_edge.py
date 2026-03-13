@@ -61,11 +61,13 @@ class TestPathTraversal:
 
 class TestCommandInjection:
     def test_tp_os_system_fstring(self, tmp_path: Path) -> None:
-        cats = _scan_snippet(tmp_path, 'import os\nos.system(f"echo {user}")')
+        cats = _scan_snippet(tmp_path, 'import os\nos.system(f"echo {user}")',
+                             force_regex=True)
         assert "command_injection" in cats
 
     def test_tp_subprocess_shell_true(self, tmp_path: Path) -> None:
-        cats = _scan_snippet(tmp_path, 'import subprocess\nsubprocess.run(cmd, shell=True)')
+        cats = _scan_snippet(tmp_path, 'import subprocess\nsubprocess.run(cmd, shell=True)',
+                             force_regex=True)
         assert "command_injection" in cats
 
     def test_fp_os_system_literal(self, tmp_path: Path) -> None:
@@ -79,11 +81,13 @@ class TestCommandInjection:
 
 class TestDangerousEval:
     def test_tp_eval_variable(self, tmp_path: Path) -> None:
-        cats = _scan_snippet(tmp_path, 'result = eval(user_input)')
+        cats = _scan_snippet(tmp_path, 'result = eval(user_input)',
+                             force_regex=True)
         assert "dangerous_eval" in cats
 
     def test_tp_exec_variable(self, tmp_path: Path) -> None:
-        cats = _scan_snippet(tmp_path, 'exec(code_string)')
+        cats = _scan_snippet(tmp_path, 'exec(code_string)',
+                             force_regex=True)
         assert "dangerous_eval" in cats
 
     def test_fp_eval_literal(self, tmp_path: Path) -> None:
@@ -269,7 +273,8 @@ class TestTimingAttackComparison:
 
 class TestTsChildProcessInjection:
     def test_tp_exec_template(self, tmp_path: Path) -> None:
-        cats = _scan_snippet(tmp_path, 'child_process.exec(`ls ${dir}`)', "server.ts")
+        cats = _scan_snippet(tmp_path, 'child_process.exec(`ls ${dir}`)', "server.ts",
+                             force_regex=True)
         assert "child_process_injection" in cats
 
     def test_tp_execsync_variable(self, tmp_path: Path) -> None:
@@ -284,7 +289,8 @@ class TestTsChildProcessInjection:
 
 class TestTsSqlInjection:
     def test_tp_query_template(self, tmp_path: Path) -> None:
-        cats = _scan_snippet(tmp_path, 'db.query(`SELECT * FROM users WHERE id=${id}`)', "server.ts")
+        cats = _scan_snippet(tmp_path, 'db.query(`SELECT * FROM users WHERE id=${id}`)', "server.ts",
+                             force_regex=True)
         assert "ts_sql_injection" in cats
 
     def test_fp_tagged_template(self, tmp_path: Path) -> None:
@@ -311,3 +317,56 @@ class TestTsAsyncInjection:
     def test_fp_spawn_no_shell(self, tmp_path: Path) -> None:
         cats = _scan_snippet(tmp_path, 'spawn("ls", ["-la"])', "server.ts")
         assert "ts_async_injection" not in cats
+
+
+class TestTsUnsafeEval:
+    def test_tp_new_function(self, tmp_path: Path) -> None:
+        cats = _scan_snippet(tmp_path, 'const fn = new Function(code)', "server.ts",
+                             force_regex=True)
+        assert "ts_unsafe_eval" in cats
+
+    def test_tp_eval_variable(self, tmp_path: Path) -> None:
+        cats = _scan_snippet(tmp_path, 'const r = eval(userInput)', "server.ts",
+                             force_regex=True)
+        assert "ts_unsafe_eval" in cats
+
+    def test_tp_vm_run(self, tmp_path: Path) -> None:
+        cats = _scan_snippet(tmp_path, 'vm.runInNewContext(code, sandbox)', "server.ts",
+                             force_regex=True)
+        assert "ts_unsafe_eval" in cats
+
+    def test_fp_eval_literal(self, tmp_path: Path) -> None:
+        cats = _scan_snippet(tmp_path, "const r = eval('1+1')", "server.ts")
+        assert "ts_unsafe_eval" not in cats
+
+    def test_fp_method_with_eval_in_name(self, tmp_path: Path) -> None:
+        cats = _scan_snippet(tmp_path, 'this.evaluateResult(data)', "server.ts")
+        assert "ts_unsafe_eval" not in cats
+
+
+class TestPrototypePollution:
+    def test_tp_lodash_merge(self, tmp_path: Path) -> None:
+        cats = _scan_snippet(tmp_path, '_.merge(config, req.body)', "server.ts")
+        assert "prototype_pollution" in cats
+
+    def test_tp_dynamic_property(self, tmp_path: Path) -> None:
+        cats = _scan_snippet(tmp_path, 'obj[params[key]] = value', "server.ts")
+        assert "prototype_pollution" in cats
+
+    def test_fp_static_property(self, tmp_path: Path) -> None:
+        cats = _scan_snippet(tmp_path, 'obj["name"] = "test"', "server.ts")
+        assert "prototype_pollution" not in cats
+
+
+class TestMultiLineDetection:
+    """Regression tests for re.MULTILINE fix (FIX-1)."""
+
+    def test_hardcoded_cred_not_on_line_1(self, tmp_path: Path) -> None:
+        code = 'import os\n\napi_key = "sk-realSecretKeyThatIsLongEnough123"'
+        cats = _scan_snippet(tmp_path, code)
+        assert "hardcoded_credential" in cats
+
+    def test_basic_auth_not_on_line_1(self, tmp_path: Path) -> None:
+        code = 'import requests\nurl = "https://admin:s3cretP4ss@db.example.com/api"'
+        cats = _scan_snippet(tmp_path, code)
+        assert "basic_auth_in_url" in cats
