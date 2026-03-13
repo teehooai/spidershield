@@ -242,7 +242,7 @@ def _iter_source_files(path: Path, ext: str) -> list[Path]:
     """Collect source files for a given extension, excluding skip dirs and test files."""
     files = []
     for f in path.rglob(f"*{ext}"):
-        if any(part in _SKIP_DIRS for part in f.parts):
+        if any(part in _SKIP_DIRS for part in f.relative_to(path).parts):
             continue
         name = f.name
         if name.startswith("test_") or name.endswith("_test.py"):

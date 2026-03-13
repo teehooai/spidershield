@@ -44,7 +44,7 @@ def _get_source_files(path: Path) -> list[Path]:
     files = []
     for ext in ("*.py", "*.ts", "*.js"):
         for f in path.rglob(ext):
-            if any(part in _SKIP_DIRS for part in f.parts):
+            if any(part in _SKIP_DIRS for part in f.relative_to(path).parts):
                 continue
             files.append(f)
     return files

@@ -304,6 +304,55 @@ def _is_excluded_file(rel_path: str) -> bool:
     )
 
 
+def _get_function_body(content: str, start: int, max_lines: int = 30) -> str:
+    """Extract the body of a Python function starting after the def line.
+
+    Returns up to *max_lines* lines of the function body (indented block).
+    """
+    lines = content[start:].split("\n")
+    body_lines: list[str] = []
+    in_body = False
+    body_indent = 0
+    for line in lines:
+        stripped = line.lstrip()
+        if not in_body:
+            # Skip the rest of the def line, docstring, etc. until we hit body
+            if stripped.startswith(('"""', "'''")):
+                in_body = True
+                continue
+            if stripped and not stripped.startswith(("#", '"""', "'''")):
+                in_body = True
+                body_indent = len(line) - len(stripped)
+        if in_body:
+            if stripped == "":
+                body_lines.append("")
+                continue
+            current_indent = len(line) - len(stripped)
+            if current_indent < body_indent and stripped:
+                break  # dedent = end of function
+            body_lines.append(stripped)
+            if len(body_lines) >= max_lines:
+                break
+    return "\n".join(body_lines)
+
+
+_VALIDATION_INDICATORS = re.compile(
+    r"(?:"
+    r"validate|sanitize|check_|_check\b|_valid"
+    r"|raise\s+(?:ValueError|TypeError)"
+    r"|isinstance\s*\("
+    r"|len\s*\(.*[<>]"  # length checks like len(x) > N
+    r"|not\s+\w+\s+or\s+len\s*\("  # guard clauses like `not x or len(x)`
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _has_validation(func_body: str) -> bool:
+    """Check if a function body contains input validation indicators."""
+    return bool(_VALIDATION_INDICATORS.search(func_body))
+
+
 def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     """Scan for security issues in Python and TypeScript files.
 
@@ -325,7 +374,7 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     source_files = list(path.rglob("*.py")) + list(path.rglob("*.ts")) + list(path.rglob("*.js"))
     source_files = [
         f for f in source_files
-        if not any(part in _EXCLUDE_DIRS for part in f.parts)
+        if not any(part in _EXCLUDE_DIRS for part in f.relative_to(path).parts)
         and not f.name.startswith("test_")
         and not f.name.endswith(".test.ts")
         and not f.name.endswith(".test.js")
@@ -374,6 +423,14 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
             for pattern in config["patterns"]:
                 for match in re.finditer(pattern, content, flags):
                     line_num = content[:match.start()].count("\n") + 1
+                    # For no_input_validation: suppress if function body
+                    # contains validation (len check, validate call, raise,
+                    # or isinstance).  This avoids flagging functions that
+                    # *do* validate their str inputs.
+                    if category == "no_input_validation":
+                        func_body = _get_function_body(content, match.end())
+                        if _has_validation(func_body):
+                            continue
                     issues.append(
                         SecurityIssue(
                             severity=config["severity"],
