@@ -79,10 +79,10 @@ MALICIOUS_PATTERNS: list[tuple[str, str, str, str]] = [
     # Pattern 8: Prompt injection - ignore instructions
     (
         "prompt_injection_ignore",
-        r"(ignore\s+(previous|prior|all|above)\s+(instructions?|prompts?|rules?)|"
+        r"(ignore\s+((previous|prior|all|above)\s+)+(instructions?|prompts?|rules?)|"
         r"forget\s+(all\s+)?(previous|prior|your)\s+(rules?|instructions?|constraints?)|"
-        r"disregard\s+(previous|prior|all|above)\s+(instructions?|prompts?|rules?)|"
-        r"you\s+are\s+now\s+|new\s+system\s+prompt|override\s+(your|the)\s+instructions?|"
+        r"disregard\s+((previous|prior|all|above)\s+)+(instructions?|prompts?|rules?)|"
+        r"you\s+are\s+now\s+([A-Z][A-Z\d]{2,}|((a|an|my|the|in)\s+(new|different|unrestricted|unfiltered|jailbr)))|new\s+system\s+prompt|override\s+(your|the)\s+instructions?|"
         r"pretend\s+you\s+(are|have)\s+(an?\s+)?(AI|model|assistant)\s+(without|with\s+no)|"
         r"act\s+as\s+if\s+you\s+have\s+no\s+(restrictions?|limitations?|rules?))",
         "malicious",
@@ -178,7 +178,121 @@ MALICIOUS_PATTERNS: list[tuple[str, str, str, str]] = [
         "malicious",
         "Reading hidden/dot files and piping to external service",
     ),
+    # Pattern 21: Browser data access (cookies, clipboard, keychain, bookmarks)
+    (
+        "browser_data_access",
+        r"(cookie|clipboard|keychain|browser\s*(data|storage|history)|"
+        r"localStorage|sessionStorage|bookmarks?\s*(export|dump|read))",
+        "suspicious",
+        "Accesses browser data (cookies, clipboard, keychain, or bookmarks)",
+    ),
+    # Pattern 22: Webhook exfiltration (sending data to external webhooks)
+    (
+        "webhook_exfiltration",
+        r"(webhook\.site|requestbin|hookbin|pipedream\.net|"
+        r"send\s+(?:data|results?|output)\s+to\s+webhook|"
+        r"post\s+(?:data|results?|findings?)\s+to\s+(?:https?://|webhook))",
+        "suspicious",
+        "Sends data to external webhook endpoint",
+    ),
 ]
+
+# Patterns that should use context-stripped content (documentation-sensitive).
+_CONTEXT_SENSITIVE_PATTERNS = {
+    "remote_code_exec", "untrusted_install", "external_binary",
+    "credential_theft", "env_exfiltration", "crypto_theft", "propagation",
+    "curl_pipe_bash", "base64_pipe_bash", "download_then_execute",
+    "python_remote_exec", "hidden_file_exfil", "reverse_shell",
+    "prompt_injection_ignore", "system_prompt_manipulation",
+    "browser_data_access", "webhook_exfiltration",
+}
+
+# Patterns suppressed in install/setup sections
+_INSTALL_SECTION_PATTERNS = {"untrusted_install", "external_binary"}
+
+
+def _strip_documentation_context(content: str) -> str:
+    """Strip documentation/educational content before pattern matching.
+
+    Removes code fences with educational preamble, inline code refs,
+    educational bullet lists, and checklist sections — these are
+    descriptions of attacks, not actual attacks.
+    """
+    # 1. Strip fenced code blocks with educational preamble (3 lines lookback)
+    educational_preamble = re.compile(
+        r"(DO\s*N[O']?T\s+USE|example\s+of|what\s+.*looks?\s+like|"
+        r"malicious\s+(skill|pattern|code)|dangerous\s+(pattern|command)|"
+        r"red\s*flag|never\s+do\s+this|avoid\s+this|"
+        r"what\s+to\s+watch\s+for|security\s+anti-?pattern|"
+        r"security\s+issues?|potential(ly)?\s+security|"
+        r"following\s+.*?(attack|threat|malicious)\s+patterns?|"
+        r"indicate\s+.*?security|"
+        r"detect\s+(command|injection|threat|attack|malicious)|"
+        r"validate[-\s]command|scan[-\s]content|"
+        r"risk\s+level|threat\s+(detect|monitor|assess)|"
+        r"security\s+(validation|check|scan|suite|guard))",
+        re.IGNORECASE,
+    )
+    result = []
+    lines = content.split("\n")
+    i = 0
+    while i < len(lines):
+        if lines[i].strip().startswith("```"):
+            lookback = "\n".join(lines[max(0, i - 3):i])
+            if educational_preamble.search(lookback):
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith("```"):
+                    i += 1
+                i += 1
+                result.append(" ")
+                continue
+        result.append(lines[i])
+        i += 1
+    stripped = "\n".join(result)
+
+    # 2. Strip inline code references
+    stripped = re.sub(r"`[^`\n]{1,80}`", " ", stripped)
+
+    # 3. Strip educational bullet lines
+    educational_line = re.compile(
+        r"^[\s]*[-*•]\s*.*?"
+        r"(red\s*flag|watch\s+for|look\s+for|avoid|don'?t|never|"
+        r"check\s+(if|for|whether)|detect|flag|scan\s+for|"
+        r"signs?\s+of|indicat(es?|ors?\s+of)|warning)",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    stripped = educational_line.sub(" ", stripped)
+
+    # 4. Strip checklist/detection sections
+    checklist_section = re.compile(
+        r"^#{1,3}\s*(red\s*flags?|security\s*check|what\s+to\s+(look|watch)\s+for|"
+        r"common\s+(attack|threat|danger)|signs?\s+of\s+malicious|"
+        r"detection\s+(criteria|rules?|patterns?)|"
+        r"what\s+this\s+(skill|tool)\s+detects)"
+        r"[\s\S]*?(?=^#{2,3}\s|\Z)",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    stripped = checklist_section.sub(" ", stripped)
+
+    return stripped
+
+
+def _is_in_install_section(content: str, match_start: int) -> bool:
+    """Check if match falls within an install/prerequisites section."""
+    before = content[:match_start]
+    headings = list(re.finditer(r"^#{1,3}\s+(.+)$", before, re.MULTILINE))
+    if not headings:
+        return False
+    last_heading = headings[-1].group(1).lower()
+    install_keywords = {
+        "install", "setup", "getting started", "prerequisites",
+        "requirements", "quickstart", "quick start", "usage",
+        "configuration", "how to use", "dependencies", "dependency",
+        "building", "build", "running", "run locally",
+        "deploying", "deployment", "development",
+    }
+    return any(kw in last_heading for kw in install_keywords)
+
 
 # Known malicious skill names (from ClawHavoc + VirusTotal reports)
 KNOWN_MALICIOUS_SLUGS = {
@@ -270,6 +384,9 @@ def scan_single_skill(
             matched_patterns=["known_malicious_slug"],
         )
 
+    # Prepare context-stripped content for documentation-sensitive patterns
+    stripped_content = _strip_documentation_context(content)
+
     # Run pattern matching
     issues: list[str] = []
     matched: list[str] = []
@@ -279,15 +396,27 @@ def scan_single_skill(
     for name, pattern, severity, description in MALICIOUS_PATTERNS:
         if name in ignored:
             continue
-        if re.search(pattern, content, re.IGNORECASE):
-            code = get_issue_code(name)
-            prefix = f"[{code}] " if code else ""
-            issues.append(f"{prefix}{description}")
-            matched.append(name)
-            if severity == "malicious":
-                has_malicious = True
-            elif severity == "suspicious":
-                has_suspicious = True
+
+        # Use stripped content for documentation-sensitive patterns
+        scan_text = stripped_content if name in _CONTEXT_SENSITIVE_PATTERNS else content
+
+        m = re.search(pattern, scan_text, re.IGNORECASE)
+        if not m:
+            continue
+
+        # Suppress install-section patterns
+        if name in _INSTALL_SECTION_PATTERNS:
+            if _is_in_install_section(content, m.start()):
+                continue
+
+        code = get_issue_code(name)
+        prefix = f"[{code}] " if code else ""
+        issues.append(f"{prefix}{description}")
+        matched.append(name)
+        if severity == "malicious":
+            has_malicious = True
+        elif severity == "suspicious":
+            has_suspicious = True
 
     # Check for typosquatting
     if "typosquat" not in ignored:
