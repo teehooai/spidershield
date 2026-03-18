@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spidershield"
-version = "0.3.2"
+version = "0.3.3"
 description = "Security scanner and runtime guard for MCP servers -- static analysis, policy enforcement, DLP, prompt injection detection"
 readme = "README.md"
 license = "MIT"
