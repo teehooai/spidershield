@@ -290,13 +290,14 @@ spidershield agent-pin list
 
 | Rating | Score | Meaning |
 |--------|-------|---------|
-| A | 8.5+ | Production-ready |
-| B | 7.0+ | Safe with minor suggestions |
+| A | 9.0+ | Exemplary |
+| B | 7.0+ | Production-ready |
 | C | 5.0+ | Usable, needs improvements |
 | D | 3.0+ | Significant issues |
 | F | <3.0 | Unsafe, do not deploy |
 
-Formula: `description * 0.35 + security_adjusted * 0.35 + architecture * 0.30`
+Formula (MCP servers): `description × 0.38 + security × 0.34 + metadata × 0.28`
+Formula (Skills): `description × 0.45 + security × 0.35 + metadata × 0.20`
 
 ## JSON output
 
