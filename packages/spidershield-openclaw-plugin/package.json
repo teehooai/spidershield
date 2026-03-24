@@ -1,0 +1,53 @@
+{
+  "name": "spidershield-openclaw-plugin",
+  "version": "0.1.0",
+  "description": "SpiderShield Runtime Guard — security checks for every tool call in OpenClaw agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "security",
+    "mcp",
+    "spidershield",
+    "spiderrating",
+    "runtime-guard",
+    "dlp",
+    "trust-score"
+  ],
+  "author": "SpiderShield Team",
+  "license": "MIT",
+  "homepage": "https://spiderrating.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/teehooai/spidershield.git",
+    "directory": "packages/spidershield-openclaw-plugin"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.1.29"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  }
+}

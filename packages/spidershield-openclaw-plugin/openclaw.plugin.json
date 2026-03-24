@@ -1,0 +1,49 @@
+{
+  "id": "spidershield",
+  "name": "SpiderShield Runtime Guard",
+  "description": "Automatic security checks for every tool call — Trust Score verification, DLP scanning, and audit logging powered by SpiderRating's database of 15,923 rated MCP servers.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "policy": {
+        "type": "string",
+        "description": "Policy mode: balanced (default), strict, or audit-only",
+        "default": "balanced",
+        "enum": ["balanced", "strict", "audit-only"]
+      },
+      "apiUrl": {
+        "type": "string",
+        "description": "SpiderRating API URL (default: public API)",
+        "default": "https://spiderrating-api-production.up.railway.app"
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Optional SpiderRating Pro API key for cloud audit logging"
+      },
+      "blockThreshold": {
+        "type": "number",
+        "description": "Trust score below this = block (default: 3.0 for Grade F)",
+        "default": 3.0
+      },
+      "warnThreshold": {
+        "type": "number",
+        "description": "Trust score below this = warn (default: 5.0 for Grade D)",
+        "default": 5.0
+      }
+    },
+    "additionalProperties": false
+  },
+  "uiHints": {
+    "policy": {
+      "label": "Policy Mode",
+      "help": "balanced: block dangerous + warn risky. strict: block unknown too. audit-only: log everything, block nothing."
+    },
+    "apiKey": {
+      "label": "Pro API Key (optional)",
+      "placeholder": "sr_...",
+      "sensitive": true,
+      "help": "Enables cloud audit dashboard at spiderrating.com/dashboard"
+    }
+  }
+}
