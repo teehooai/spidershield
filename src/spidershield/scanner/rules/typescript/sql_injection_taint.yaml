@@ -30,3 +30,13 @@ rules:
       - pattern: parseInt(...)
       - pattern: Number(...)
       - pattern: $DB.escape(...)
+      # Structural SQL fragments (not data interpolation)
+      - pattern: |
+          `...${$CLAUSE}...`
+        metavariable-regex:
+          metavariable: $CLAUSE
+          regex: "(?i)(schemaClause|whereClause|schemaFilter|tableFilter|orderClause|limitClause|schemaValue|tableName|procedureName|functionName)"
+      # Parameterized queries: .query(`...`, [params]) or .query(`...`, queryParams)
+      - pattern: $DB.query(`...`, $PARAMS)
+      - pattern: $DB.query(`...`, [...])
+      - pattern: $DB.execute(`...`, $PARAMS)

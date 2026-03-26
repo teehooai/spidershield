@@ -34,6 +34,12 @@ rules:
       - pattern: child_process.execFile(...)
       - pattern: child_process.spawn(...)
       - pattern: spawnSync(...)
+      # Hardcoded system commands (not user input)
+      - pattern: execSync(`which ...`)
+      - pattern: execSync(`where ...`)
+      - pattern: execSync(`command -v ...`)
+      - pattern: execSync(`reg query ...`)
+      - pattern: exec(`osascript ...`)
     message: >
       User-controlled string '$PARAM' flows into child_process.exec/execSync —
       shell command injection risk. Use execFile or spawn with explicit argument arrays.

@@ -361,15 +361,19 @@ TS_DANGEROUS_PATTERNS = {
         "fix": "Use parameterized queries ($1, $2) instead of template literal interpolation",
         # FP suppression: interpolation of safe structural elements (not user data)
         "_fp_safe_patterns": [
-            # Interpolation of WHERE clause / schema clause (structural, not data)
+            # Interpolation of WHERE/ORDER/LIMIT clause (structural, not data)
             r"\$\{(?:schemaClause|whereClause|schemaFilter|tableFilter|orderClause|limitClause)\}",
-            # Interpolation of schema/table name from prior DB query (not user input)
+            # Interpolation of schema/table/procedure name from prior DB query
             r"\$\{(?:schema(?:Value|Name)?|database|tableName|procedureName|functionName)\}",
-            # SHOW CREATE with schema.name pattern (metadata lookup)
+            # SHOW CREATE / INFORMATION_SCHEMA metadata queries (never user-facing)
             r"SHOW\s+CREATE",
-            # Query followed by parameterized array: .query(`...`, [params])
-            r"\.query\(\s*`[^`]*`\s*,\s*\[",
-            r"\.query\(\s*`[^`]*`\s*,\s*queryParams",
+            r"INFORMATION_SCHEMA",
+            # Query followed by parameterized array
+            r"\.query\([^)]*,\s*\[",
+            r"\.query\([^)]*,\s*queryParams",
+            r"\.query\([^)]*,\s*params",
+            # Read-only SELECT from system tables (no user data interpolation risk)
+            r"SELECT\s+[\w.,\s*]+FROM\s+INFORMATION_SCHEMA",
         ],
     },
     "ts_async_injection": {
@@ -901,7 +905,39 @@ def scan_security(path: Path) -> tuple[float, list[SecurityIssue]]:
     # by semgrep_scan.py; file_context classification lives here to keep it DRY).
     for issue in semgrep_issues:
         issue.file_context = _classify_file_context(issue.file)
-    issues.extend(semgrep_issues)
+
+    # P4 FP suppression: filter Semgrep issues using source code context
+    # Same _fp_safe_patterns mechanism as regex, applied to Semgrep results
+    _all_fp_patterns = {}
+    for cfg in list(DANGEROUS_PATTERNS.values()) + list(TS_DANGEROUS_PATTERNS.values()):
+        cat = cfg.get("description", "")
+        fps = cfg.get("_fp_safe_patterns", [])
+        if fps:
+            # Map category name to FP patterns
+            for cat_name, cat_cfg in list(DANGEROUS_PATTERNS.items()) + list(TS_DANGEROUS_PATTERNS.items()):
+                if cat_cfg is cfg:
+                    _all_fp_patterns[cat_name] = fps
+                    break
+
+    filtered_semgrep = []
+    for issue in semgrep_issues:
+        fp_patterns = _all_fp_patterns.get(issue.category, [])
+        if fp_patterns and issue.file:
+            try:
+                file_path = path / issue.file
+                if file_path.exists():
+                    src = file_path.read_text(errors="ignore")
+                    # Get context around the flagged line (±5 lines)
+                    lines = src.splitlines()
+                    ln = max(0, (issue.line or 1) - 6)
+                    ctx = "\n".join(lines[ln:ln + 30])  # wider window for multi-line template literals
+                    if any(re.search(fp, ctx, re.IGNORECASE) for fp in fp_patterns):
+                        continue  # FP suppressed
+            except Exception:
+                pass
+        filtered_semgrep.append(issue)
+
+    issues.extend(filtered_semgrep)
 
     for source_file in source_files:
         try:
