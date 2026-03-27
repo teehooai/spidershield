@@ -308,14 +308,56 @@ spidershield scan ./server --format json -o report.json
 
 ## GitHub Action
 
-Add SpiderShield to your CI pipeline:
+Add SpiderShield to your CI pipeline. Available on the [GitHub Marketplace](https://github.com/marketplace/actions/spidershield-scan).
+
+### Basic usage
 
 ```yaml
-- uses: teehooai/spidershield@v0.3.0
+# .github/workflows/security.yml
+name: SpiderShield Security Scan
+on: [push, pull_request]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: teehooai/spidershield@v1
+        with:
+          target: '.'
+          fail-below: '6.0'
+```
+
+### With outputs
+
+```yaml
+- uses: actions/checkout@v4
+- id: scan
+  uses: teehooai/spidershield@v1
   with:
     target: '.'
     fail-below: '6.0'
+    format: 'json'
+- run: |
+    echo "Score: ${{ steps.scan.outputs.score }}"
+    echo "Rating: ${{ steps.scan.outputs.rating }}"
 ```
+
+### Action inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `target` | Path to MCP server directory | `.` |
+| `fail-below` | Fail if score is below this threshold (0-10) | `0` (never fail) |
+| `format` | Output format (`table` or `json`) | `table` |
+
+### Action outputs
+
+| Output | Description |
+|--------|-------------|
+| `score` | Overall scan score (0-10) |
+| `rating` | Rating: F / C / B / A / A+ |
+| `tool-count` | Number of tools detected |
 
 ## Commands
 

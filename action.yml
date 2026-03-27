@@ -1,5 +1,6 @@
 name: 'SpiderShield Scan'
 description: 'Security scanner & runtime guard for MCP servers -- static analysis, policy enforcement, DLP'
+author: 'TeehooAI'
 branding:
   icon: 'shield'
   color: 'blue'
