@@ -6,6 +6,7 @@ from spidershield.commands import (
     agent_check,
     agent_pin,
     audit_group,
+    check,
     dataset,
     evaluate,
     guard,
@@ -24,6 +25,7 @@ def main():
 
 
 # Register all commands and groups
+main.add_command(check)
 main.add_command(scan)
 main.add_command(rewrite)
 main.add_command(harden)

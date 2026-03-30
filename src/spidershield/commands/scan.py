@@ -26,14 +26,17 @@ def scan(target: str, output: str | None, fmt: str, tools_json: str | None, poli
 
     Use --policy to auto-generate a security policy YAML from scan results.
     """
+    # Track the scan report so --policy can reuse it (avoid redundant second scan)
+    scan_report = None
+
     if fmt == "sarif":
         from pathlib import Path
 
         from spidershield.agent.sarif import sarif_to_json, scan_report_to_sarif
         from spidershield.scanner.runner import run_scan_report
 
-        report = run_scan_report(target, tools_json=tools_json)
-        sarif = scan_report_to_sarif(report)
+        scan_report = run_scan_report(target, tools_json=tools_json)
+        sarif = scan_report_to_sarif(scan_report)
         sarif_json = sarif_to_json(sarif)
         if output:
             Path(output).write_text(sarif_json, encoding="utf-8")
@@ -46,8 +49,8 @@ def scan(target: str, output: str | None, fmt: str, tools_json: str | None, poli
 
         from spidershield.scanner.runner import run_scan_report
 
-        report = run_scan_report(target, tools_json=tools_json)
-        report_dict = json.loads(report.model_dump_json())
+        scan_report = run_scan_report(target, tools_json=tools_json)
+        report_dict = json.loads(scan_report.model_dump_json())
 
         from spidershield.spiderrating import convert, parse_owner_repo
 
@@ -73,19 +76,26 @@ def scan(target: str, output: str | None, fmt: str, tools_json: str | None, poli
 
     # ── Policy YAML generation (optional) ──────────────────────────
     if policy_output:
-        _generate_policy(target, policy_output, tools_json)
+        _generate_policy(target, policy_output, tools_json, existing_report=scan_report)
 
 
-def _generate_policy(target: str, policy_output: str, tools_json: str | None) -> None:
-    """Generate a security policy YAML from scan results."""
+def _generate_policy(target: str, policy_output: str, tools_json: str | None, existing_report=None) -> None:
+    """Generate a security policy YAML from scan results.
+
+    If *existing_report* is provided (a ScanReport from a previous scan run),
+    it is reused instead of running a redundant second scan.
+    """
     import json
     import re
     from pathlib import Path
 
-    from spidershield.scanner.runner import run_scan_report
     from spidershield.spiderrating import convert, parse_owner_repo
 
-    report = run_scan_report(target, tools_json=tools_json)
+    if existing_report is not None:
+        report = existing_report
+    else:
+        from spidershield.scanner.runner import run_scan_report
+        report = run_scan_report(target, tools_json=tools_json)
     report_dict = json.loads(report.model_dump_json())
 
     try:

@@ -2,6 +2,7 @@
 
 from spidershield.commands.agent import agent_check, agent_pin
 from spidershield.commands.audit import audit_group
+from spidershield.commands.check import check
 from spidershield.commands.dataset import dataset
 from spidershield.commands.evaluate import evaluate
 from spidershield.commands.guard import guard, proxy
@@ -14,6 +15,7 @@ __all__ = [
     "agent_check",
     "agent_pin",
     "audit_group",
+    "check",
     "dataset",
     "evaluate",
     "guard",

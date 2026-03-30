@@ -40,27 +40,44 @@ runs:
 
     - name: Install SpiderShield
       shell: bash
-      run: pip install spidershield
+      run: pip install spidershield==0.3.4
 
     - name: Run scan
       id: scan
       shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        FORMAT: ${{ inputs.format }}
       run: |
-        spidershield scan "${{ inputs.target }}" --format "${{ inputs.format }}"
-
-        # Parse JSON for outputs
-        REPORT=$(spidershield scan "${{ inputs.target }}" --format json 2>/dev/null)
-        echo "score=$(echo "$REPORT" | python -c 'import sys,json; print(json.loads(sys.stdin.read(), strict=False)["overall_score"])')" >> $GITHUB_OUTPUT
-        echo "rating=$(echo "$REPORT" | python -c 'import sys,json; print(json.loads(sys.stdin.read(), strict=False)["rating"])')" >> $GITHUB_OUTPUT
-        echo "tool_count=$(echo "$REPORT" | python -c 'import sys,json; print(json.loads(sys.stdin.read(), strict=False)["tool_count"])')" >> $GITHUB_OUTPUT
+        # Single scan in JSON, then display summary and extract outputs
+        REPORT=$(spidershield scan "$TARGET" --format json 2>/dev/null)
+        python3 -c "
+        import json, sys
+        report = json.loads('''$REPORT''', strict=False) if '''$REPORT'''.strip() else {}
+        # Display summary
+        if '$FORMAT' == 'table':
+            score = report.get('overall_score', 'N/A')
+            rating = report.get('rating', 'N/A')
+            tools = report.get('tool_count', 0)
+            print(f'SpiderShield Scan Results')
+            print(f'  Score:  {score}/10')
+            print(f'  Rating: {rating}')
+            print(f'  Tools:  {tools}')
+        else:
+            print(json.dumps(report, indent=2))
+        "
+        echo "score=$(echo "$REPORT" | python3 -c 'import sys,json; print(json.loads(sys.stdin.read(), strict=False).get("overall_score","0"))')" >> $GITHUB_OUTPUT
+        echo "rating=$(echo "$REPORT" | python3 -c 'import sys,json; print(json.loads(sys.stdin.read(), strict=False).get("rating",""))')" >> $GITHUB_OUTPUT
+        echo "tool_count=$(echo "$REPORT" | python3 -c 'import sys,json; print(json.loads(sys.stdin.read(), strict=False).get("tool_count","0"))')" >> $GITHUB_OUTPUT
 
     - name: Check threshold
       if: inputs.fail-below != '0'
       shell: bash
+      env:
+        SCORE: ${{ steps.scan.outputs.score }}
+        THRESHOLD: ${{ inputs.fail-below }}
       run: |
-        SCORE="${{ steps.scan.outputs.score }}"
-        THRESHOLD="${{ inputs.fail-below }}"
-        if (( $(echo "$SCORE < $THRESHOLD" | bc -l) )); then
+        python3 -c "import sys; sys.exit(0 if float('$SCORE') >= float('$THRESHOLD') else 1)" || {
           echo "::error::SpiderShield score $SCORE is below threshold $THRESHOLD"
           exit 1
-        fi
+        }

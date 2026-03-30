@@ -6,6 +6,18 @@
 
 **Security toolkit for MCP servers and AI agents.** Static analysis, runtime policy enforcement, DLP, and audit logging -- from development to production.
 
+## Security Contributions
+
+SpiderShield has identified and fixed vulnerabilities in these projects (merged PRs):
+
+| Project | Stars | Fix |
+|---------|-------|-----|
+| [upstash/context7](https://github.com/upstash/context7) | 49K+ | Path traversal (CWE-22) |
+| [moeru-ai/airi](https://github.com/moeru-ai/airi) | 35K+ | Timing attack (CWE-208) |
+| [topoteretes/cognee](https://github.com/topoteretes/cognee) | -- | Command injection (CWE-78) |
+| [Flux159/mcp-server-kubernetes](https://github.com/Flux159/mcp-server-kubernetes) | 1.3K+ | Timing attack (CWE-208) |
+| [agentic-community/mcp-gateway-registry](https://github.com/agentic-community/mcp-gateway-registry) | -- | Shell injection (CWE-78) |
+
 ## What SpiderShield does
 
 SpiderShield is a 5-subsystem security toolkit:
