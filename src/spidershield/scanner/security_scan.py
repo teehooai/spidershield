@@ -106,6 +106,12 @@ DANGEROUS_PATTERNS = {
             r'IN\s*\(\s*\{',
             # .execute(query, params) where query is a variable (not inline f-string)
             r'\.execute\(\s*query\s*,',
+            # Sandbox / shell-exec environments expose a `.execute()` method that runs
+            # shell commands, NOT SQL. Receivers like `env`, `sandbox`, `env_ref`,
+            # `backend`, `terminal`, `container`, `shell` are not DB cursors.
+            # Source: 14/19 critical FPs when scanning NousResearch/hermes-agent
+            # (tools/code_execution_tool.py, tools/process_registry.py).
+            r"\b(?:env|env_ref|environment|sandbox|backend|terminal|container|shell|sub_env|exec_env)\.execute\(",
         ],
     },
     "hardcoded_credential": {

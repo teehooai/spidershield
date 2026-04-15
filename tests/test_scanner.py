@@ -251,6 +251,27 @@ def test_security_real_sql_injection_still_detected(tmp_path: Path):
     assert any(i.category == "sql_injection" for i in issues)
 
 
+def test_security_no_false_positive_sandbox_env_execute(tmp_path: Path):
+    """Sandbox shell-exec receivers (env/sandbox/env_ref) must NOT trigger sql_injection.
+
+    Regression: when scanning NousResearch/hermes-agent we hit 14 critical FPs
+    on `env.execute("rm -rf ...")` style calls. The receiver is a shell
+    sandbox, not a DB cursor.
+    """
+    py_file = tmp_path / "runner.py"
+    py_file.write_text(
+        'import shlex\n'
+        'def cleanup(env, path):\n'
+        '    quoted = shlex.quote(path)\n'
+        '    env.execute(f"rm -rf {quoted}", cwd="/", timeout=5)\n'
+        'def kill(session, pid):\n'
+        '    session.env_ref.execute(f"kill {pid} 2>/dev/null", timeout=5)\n'
+    )
+    score, issues = scan_security(tmp_path)
+    assert not any(i.category == "sql_injection" for i in issues), \
+        f"sandbox shell exec misclassified as SQL injection: {[i for i in issues if i.category == 'sql_injection']}"
+
+
 # --- S1: Go tool extraction tests ---
 
 def test_extract_go_newtool(tmp_path: Path):
