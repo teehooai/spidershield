@@ -129,3 +129,36 @@ Before submitting a PR to any external MCP repo, ALL 5 gates must pass:
 | Label calibration data | commands/dataset.py (dataset calibrate/calibrate-report) |
 | Add CLI command | commands/<module>.py + register in commands/__init__.py + cli.py |
 | Banned license policy | scoring_spec.py (BANNED_LICENSES) + docs/decisions/banned-licenses.md |
+
+
+## 🔴 Production Status — NEVER Infer from Local Files
+
+**This rule applies to ALL Owen's projects. Violation = wrong diagnosis.**
+
+When asked to check if a job/service/pipeline is running, healthy, or broken:
+
+### ❌ NEVER do this
+- Read local SQLite/MySQL file timestamps
+- Read local log files and infer production state
+- Read local tmp/cache/debug files
+- Use `git log` timestamps to guess if production is active
+- Use local scheduler config to assume production runs the same way
+- Use Explore agents to scan local repo as production audit evidence
+
+### ✅ ALWAYS do this instead
+1. **Ask the user for a production health endpoint** (`/api/admin/...`, `/api/health`, etc.)
+2. **Or ask the user to check** the hosting dashboard (Render / Railway / Cloudflare)
+3. **Or query the production database** (Supabase / Railway MySQL) directly
+4. **If none of the above is possible**, explicitly state: "I can only see local files. I cannot confirm production status. The following is a guess that may be completely wrong."
+
+### Production environment mapping
+| Project | Local | Production | How to check |
+|---------|-------|-----------|--------------|
+| fullhouse-sports | SQLite + dev server | Railway MySQL + Render | `/api/admin/pipeline/dashboard` |
+| fullhouse-asset | Windows Task Scheduler | Render / APScheduler | Supabase `ic_nominations` table |
+| teehoo-core-shell | No local runtime | Supabase Edge Functions + Render cron | Supabase `pipeline_runs` table |
+| spiderrating | Local pipeline occasional | Railway API + Cloudflare Pages | Railway metrics + Supabase |
+| teehoo-martech | Local scripts | TBD | TBD |
+
+### Why this rule exists
+2026-04-13 incident: Claude diagnosed fullhouse-sports as "possibly dead for 35 days" based on local SQLite mtime. Production was actually v3.9.1, 19 jobs running, 54 success/0 errors in 24h, 55 predictions generated. The diagnosis was 100% wrong and would have wasted hours fixing non-existent problems.

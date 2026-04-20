@@ -199,6 +199,7 @@ def score_descriptions(
         scores.append(
             ToolDescriptionScore(
                 tool_name=name,
+                description=desc[:500],
                 has_action_verb=has_action_verb,
                 has_scenario_trigger=has_scenario,
                 has_param_examples=has_examples,
@@ -215,16 +216,30 @@ def score_descriptions(
 
 
 def _extract_fastmcp_kwarg_tools(content: str) -> list[dict]:
-    """Extract tools from FastMCP @mcp.tool(description="...") decorator-kwarg style.
+    """Extract tools from FastMCP @<name>.tool(...) decorator style.
+
+    Handles real-world variants:
+      1. description kwarg in the decorator
+      2. description kwarg missing — fall back to the function docstring
+      3. stacked decorators between @<name>.tool(...) and def
+      4. non-canonical names (mcp_server, trading_server, my_mcp, etc.)
+      5. multi-line decorator arguments with nested dicts/calls
 
     Uses paren-depth scanning instead of greedy regex to safely handle nested
     parentheses (e.g. annotations=ToolAnnotations(...)) without backtracking.
     """
     tools: list[dict] = []
-    # Find all @<name>.tool( positions
-    dec_pat = re.compile(r'@(?:mcp|server|app|fastmcp)\.tool\(')
+    # Allow any identifier containing mcp/server/app/fastmcp as a substring
+    # (covers mcp_server, trading_server, my_mcp, etc.) without matching
+    # unrelated decorators like @logger.tool() or @config.tool().
+    dec_pat = re.compile(r'@(?:\w*(?:mcp|server|app|fastmcp)\w*)\.tool\(')
     desc_pat = re.compile(r'description\s*=\s*(?:"""(.*?)"""|\'\'\'(.*?)\'\'\'|"([^"]*?)"|\'([^\']*?)\')', re.DOTALL)
-    def_pat = re.compile(r'(?:async\s+)?def\s+(\w+)')
+    # Match def after skipping any additional stacked @decorator lines
+    def_pat = re.compile(
+        r'(?:@[\w.]+(?:\([^)]*\))?\s*)*'   # optional stacked decorators
+        r'(?:async\s+)?def\s+(\w+)\s*\('
+    )
+    docstring_pat = re.compile(r'\)\s*(?:->\s*[^:]+)?:\s*(?:"""(.*?)"""|\'\'\'(.*?)\'\'\')', re.DOTALL)
 
     for dec_match in dec_pat.finditer(content):
         start = dec_match.end()  # position after opening '('
@@ -241,20 +256,30 @@ def _extract_fastmcp_kwarg_tools(content: str) -> list[dict]:
         # content[start:i-1] is the decorator body
         dec_body = content[start:i - 1]
 
-        # Look for description= kwarg inside the decorator body
+        # Try description= kwarg first
+        desc = ""
         dm = desc_pat.search(dec_body)
-        if dm is None:
-            continue
-        desc = (dm.group(1) or dm.group(2) or dm.group(3) or dm.group(4) or "").strip()
+        if dm is not None:
+            desc = (dm.group(1) or dm.group(2) or dm.group(3) or dm.group(4) or "").strip()
 
-        # Look for 'def func_name' in the next ~100 chars after the decorator close
-        after_dec = content[i:i + 100]
+        # Find def name, skipping any stacked decorators, within 500 chars
+        after_dec = content[i:i + 500]
         fm = def_pat.search(after_dec)
         if fm is None:
             continue
         name = fm.group(1)
-        if name:
-            tools.append({"name": name, "description": desc})
+        if not name:
+            continue
+
+        # If no description from kwarg, fall back to function docstring
+        if not desc:
+            # Search for docstring after the function signature closes
+            sig_start = i + fm.start()
+            ds = docstring_pat.search(content[sig_start:sig_start + 2000])
+            if ds is not None:
+                desc = (ds.group(1) or ds.group(2) or "").strip()
+
+        tools.append({"name": name, "description": desc})
 
     return tools
 
@@ -306,7 +331,7 @@ def _extract_python_tools(path: Path, tools: list[dict], seen: set[str]) -> None
         # Match from decorator through def name, then skip to the docstring.
         # Avoids [^)]* which breaks on type annotations like tuple[int, int].
         for match in re.finditer(
-            r'@(?:mcp|server|app)\.tool\(?\)?\s*(?:async\s+)?def\s+(\w+)[^"\']*?"""(.*?)"""',
+            r'@(?:\w*(?:mcp|server|app|fastmcp)\w*)\.tool\(?\)?\s*(?:async\s+)?def\s+(\w+)[^"\']*?"""(.*?)"""',
             content,
             re.DOTALL,
         ):

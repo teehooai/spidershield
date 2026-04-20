@@ -41,6 +41,7 @@ class ToolDescriptionScore(BaseModel):
     """Quality score for a single tool's description."""
 
     tool_name: str
+    description: str = Field(default="", description="Raw tool description text (truncated to 500 chars)")
     has_action_verb: bool = Field(default=False, description="Starts with an action verb")
     has_scenario_trigger: bool = Field(default=False, description="Contains 'Use when...' guidance")
     has_param_examples: bool = Field(default=False, description="Contains concrete parameter examples")
